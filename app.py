@@ -1,27 +1,23 @@
 #!/usr/bin/env python3
-"""B2H4 Content Hub - Flask Dashboard.
-Dashboard web para visualizar conteúdos coletados e analisados.
-Reaproveita estrutura da newsletter.
-"""
+"""B2H4 Content Hub - Flask Dashboard."""
 
 import os
 import sys
 import json
-import random
+import math
 from datetime import datetime, timezone
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
-from database import get_db, get_stats, get_recent_items
+from database import get_db, get_stats, get_recent_items, clean_title
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'b2h4-content-hub-dev')
 
 @app.template_filter('fmt_date')
 def fmt_date(dt):
-    """Formata data para exibição. Funciona com string (SQLite) e datetime (PostgreSQL)."""
     if dt is None:
         return ''
     if isinstance(dt, str):
@@ -31,7 +27,6 @@ def fmt_date(dt):
     return str(dt)[:16]
 
 ADMIN_KEY = os.environ.get('ADMIN_KEY', '1234')
-
 
 def require_admin(f):
     @wraps(f)
@@ -45,81 +40,104 @@ def require_admin(f):
 
 @app.route('/')
 def index():
-    """Dashboard principal."""
+    """Dashboard principal com paginação, busca e ordenação."""
     stats = get_stats()
-    recent = get_recent_items(hours=72)
-    # Embaralha para mostrar mix de fontes
-    random.shuffle(recent)
-    recent = recent[:20]
-    return render_template('index.html', stats=stats, items=recent)
+    
+    # Parâmetros
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    category = request.args.get('category', None)
+    query = request.args.get('q', '').strip()
+    sort = request.args.get('sort', 'date')
+    
+    # Busca
+    items = get_recent_items(hours=24*30, category=category, limit=1000)
+    
+    # Filtro por texto
+    if query:
+        items = [i for i in items if query.lower() in i.get('title', '').lower()]
+    
+    # Ordenação
+    if sort == 'relevance':
+        items.sort(key=lambda x: (1 if x.get('analyzed') else 0, x.get('importance', 0)), reverse=True)
+    else:
+        items.sort(key=lambda x: x.get('fetched_at', ''), reverse=True)
+    
+    # Paginação
+    total = len(items)
+    total_pages = max(1, math.ceil(total / per_page))
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    items_page = items[start:start + per_page]
+    
+    return render_template('index.html', 
+                         stats=stats, 
+                         items=items_page,
+                         current_page=page,
+                         total_pages=total_pages)
 
 
 @app.route('/api/stats')
 def api_stats():
-    """API: estatísticas gerais."""
     return jsonify(get_stats())
 
 
 @app.route('/api/items')
 def api_items():
-    """API: lista de itens."""
     hours = request.args.get('hours', 24, type=int)
     category = request.args.get('category', None)
+    query = request.args.get('q', '').strip()
     items = get_recent_items(hours=hours, category=category)
+    if query:
+        items = [i for i in items if query.lower() in i.get('title', '').lower()]
     return jsonify({'items': items, 'count': len(items)})
 
 
 @app.route('/api/trigger-fetch', methods=['POST'])
 @require_admin
 def trigger_fetch():
-    """API: dispara coleta manual."""
     from fetch_sources import fetch_all_sources
-    stats = fetch_all_sources()
-    return jsonify(stats)
+    return jsonify(fetch_all_sources())
 
 
 @app.route('/api/trigger-analyze', methods=['POST'])
 @require_admin
 def trigger_analyze():
-    """API: dispara análise manual."""
     from analyze_content import analyze_batch
     limit = request.args.get('limit', 10, type=int)
-    stats = analyze_batch(limit=limit)
-    return jsonify(stats)
+    return jsonify(analyze_batch(limit=limit))
+
+
+@app.route('/api/trigger-distribute', methods=['POST'])
+@require_admin
+def trigger_distribute():
+    from distribute import send_daily_digest
+    return jsonify(send_daily_digest())
 
 
 @app.route('/api/debug')
 def debug():
-    """Diagnóstico - verifica env vars disponíveis."""
     keys = ['OPENROUTER_API_KEY', 'DATABASE_URL', 'RESEND_API_KEY', 'TELEGRAM_BOT_TOKEN']
     result = {}
     for k in keys:
         v = os.environ.get(k, '')
-        if v:
-            result[k] = f"✓ configurada ({v[:8]}...{v[-4:]})"
-        else:
-            result[k] = "✗ NÃO configurada"
+        result[k] = f"✓ ({v[:8]}...{v[-4:]})" if v else "✗ NÃO configurada"
     return jsonify(result)
 
 
 @app.route('/api/clean-titles', methods=['POST'])
 @require_admin
 def clean_titles():
-    """Limpa títulos existentes no banco."""
-    from database import clean_title
     with get_db() as conn:
         cur = conn.cursor()
         if 'psycopg2' in str(type(conn)):
-            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /' OR title LIKE '%- %'")
+            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /'")
         else:
-            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /' OR title LIKE '%- %'")
-        
+            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /'")
         rows = cur.fetchall()
         updated = 0
-        
         for row in rows:
-            item_id = row[0]
-            old_title = row[1]
+            item_id, old_title = row[0], row[1]
             if not old_title:
                 continue
             new_title = clean_title(old_title)
@@ -129,20 +147,12 @@ def clean_titles():
                 else:
                     cur.execute("UPDATE content_items SET title = ? WHERE id = ?", (new_title, item_id))
                 updated += 1
-        
         conn.commit()
         return jsonify({'cleaned': updated})
-@require_admin
-def trigger_distribute():
-    """API: dispara distribuição manual."""
-    from distribute import send_daily_digest
-    stats = send_daily_digest()
-    return jsonify(stats)
 
 
 @app.route('/content/<int:content_id>')
 def content_detail(content_id):
-    """Página de detalhe de um conteúdo."""
     try:
         with get_db() as conn:
             cur = conn.cursor()
