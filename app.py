@@ -126,32 +126,30 @@ def debug():
 @app.route('/api/clean-titles', methods=['POST'])
 @require_admin
 def clean_titles():
-    """Limpa títulos existentes no banco."""
+    """Limpa títulos existentes no banco usando SQL puro."""
     with get_db() as conn:
         cur = conn.cursor()
+        # Remove flairs [P], [N], [D], [R] do final
         if 'psycopg2' in str(type(conn)):
-            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /'")
+            cur.execute("""
+                UPDATE content_items SET title = regexp_replace(title, '\\s*\\[[A-Z]{1,3}\\]\\s*$', '', 'g')
+                WHERE title ~ '\\s*\\[[A-Z]{1,3}\\]\\s*$'
+            """)
+            flairs = cur.rowcount
+            cur.execute("""
+                UPDATE content_items SET title = regexp_replace(title, '\\s*[/\\-|]\\s*$', '', 'g')
+                WHERE title ~ '\\s*[/\\-|]\\s*$'
+            """)
+            trailing = cur.rowcount
         else:
-            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /'")
-        rows = cur.fetchall()
-        updated = 0
-        for row in rows:
-            item_id, old_title = row[0], row[1]
-            if not old_title:
-                continue
-            new_title = old_title
-            # Remove flairs [P], [N], etc
-            import re as re_module
-            new_title = re_module.sub(r'\s*\[([A-Z]{1,3})\]\s*$', '', new_title).strip()
-            new_title = re_module.sub(r'\s*[/\-|]\s*$', '', new_title).strip()
-            if new_title != old_title:
-                if 'psycopg2' in str(type(conn)):
-                    cur.execute("UPDATE content_items SET title = %s WHERE id = %s", (new_title, item_id))
-                else:
-                    cur.execute("UPDATE content_items SET title = ? WHERE id = ?", (new_title, item_id))
-                updated += 1
+            cur.execute("""
+                UPDATE content_items SET title = rtrim(replace(replace(replace(title, ' [P]', ''), ' [N]', ''), ' [D]', ''), ' /-')
+                WHERE title LIKE '%[P]' OR title LIKE '%[N]' OR title LIKE '%[D]' OR title LIKE '% /'
+            """)
+            flairs = cur.rowcount
+            trailing = 0
         conn.commit()
-        return jsonify({'cleaned': updated})
+        return jsonify({'cleaned': flairs + trailing})
 
 
 @app.route('/content/<int:content_id>')
