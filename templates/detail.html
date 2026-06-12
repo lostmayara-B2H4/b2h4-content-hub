@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ item.title }} - B2H4 Content Hub</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        header { padding: 20px 0; border-bottom: 1px solid #222; margin-bottom: 30px; }
+        header a { color: #6366f1; text-decoration: none; }
+        h1 { font-size: 24px; color: #fff; margin: 20px 0 10px; }
+        .meta { color: #666; font-size: 14px; margin-bottom: 20px; }
+        .meta span { margin-right: 15px; }
+        .summary { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .summary h2 { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .summary p { line-height: 1.6; }
+        .analyses { margin-top: 30px; }
+        .analyses h2 { font-size: 18px; color: #fff; margin-bottom: 15px; }
+        .analysis { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
+        .analysis .role { font-size: 12px; color: #6366f1; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .analysis .content { line-height: 1.6; white-space: pre-wrap; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .badge-engineering { background: #1e3a5f; color: #60a5fa; }
+        .badge-marketing { background: #3d1f5c; color: #c084fc; }
+        .badge-finance { background: #1f3d1f; color: #4ade80; }
+        .badge-research { background: #3d2f1f; color: #fbbf24; }
+        .badge-tools { background: #1f2d3d; color: #38bdf8; }
+        .badge-general { background: #222; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/">← Voltar ao Hub</a>
+        </header>
+
+        <h1>{{ item.title }}</h1>
+        <div class="meta">
+            <span class="badge badge-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
+            <span>📡 {{ item.source_name }}</span>
+            <span>🕐 {{ item.fetched_at[:16] if item.fetched_at else '' }}</span>
+            {% if item.url %}
+            <span>🔗 <a href="{{ item.url }}" target="_blank" style="color: #6366f1;">Abrir original</a></span>
+            {% endif %}
+        </div>
+
+        {% if item.summary %}
+        <div class="summary">
+            <h2>Resumo</h2>
+            <p>{{ item.summary }}</p>
+        </div>
+        {% endif %}
+
+        {% if analyses %}
+        <div class="analyses">
+            <h2>🎯 Análises dos Especialistas</h2>
+            {% for a in analyses %}
+            <div class="analysis">
+                <div class="role">{{ a.expert_role }}</div>
+                <div class="content">{{ a.analysis }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
