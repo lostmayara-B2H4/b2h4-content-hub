@@ -91,12 +91,12 @@ SUBREDDITS = [
 
 # Categorias de classificação
 CATEGORY_KEYWORDS = {
-    'engineering': ['engineering', 'developer', 'code', 'programming', 'api', 'framework', 'library', 'open source', 'github', 'deploy', 'infrastructure', 'cloud', 'devops', 'backend', 'frontend', 'fullstack', 'rust', 'python', 'javascript', 'typescript', 'go', 'docker', 'kubernetes'],
-    'marketing': ['marketing', 'growth', 'seo', 'content', 'brand', 'social media', 'advertising', 'campaign', 'audience', 'engagement', 'conversion', 'funnel', 'acquisition', 'retention'],
-    'finance': ['finance', 'investment', 'funding', 'venture', 'startup', 'valuation', 'ipo', 'revenue', 'profit', 'market', 'stock', 'crypto', 'fintech', 'banking'],
-    'research': ['research', 'paper', 'arxiv', 'study', 'experiment', 'benchmark', 'model', 'neural', 'transformer', 'llm', 'gpt', 'diffusion', 'reinforcement', 'supervised', 'unsupervised'],
-    'tools': ['tool', 'platform', 'app', 'software', 'saas', 'product', 'launch', 'release', 'update', 'feature', 'integration', 'automation', 'workflow', 'agent', 'copilot'],
-    'regulation': ['regulation', 'policy', 'law', 'compliance', 'gdpr', 'privacy', 'safety', 'ethics', 'governance', 'ban', 'restrict', 'guideline', 'framework'],
+    'engineering': ['engineering', 'developer', 'code', 'programming', 'api', 'framework', 'library', 'open source', 'github', 'deploy', 'infrastructure', 'cloud', 'devops', 'backend', 'frontend', 'fullstack', 'rust', 'python', 'javascript', 'typescript', 'go', 'docker', 'kubernetes', 'system', 'architecture', 'database', 'server', 'microservice', 'ci/cd', 'testing', 'debug', 'refactor'],
+    'marketing': ['marketing', 'growth', 'seo', 'content', 'brand', 'social media', 'advertising', 'campaign', 'audience', 'engagement', 'conversion', 'funnel', 'acquisition', 'retention', 'viral', 'launch', 'product hunt', 'newsletter', 'email', 'copywriting', 'pitch'],
+    'finance': ['finance', 'investment', 'funding', 'venture', 'startup', 'valuation', 'ipo', 'revenue', 'profit', 'market', 'stock', 'crypto', 'fintech', 'banking', 'raised', 'series', 'seed', 'valuation', 'unicorn', 'acquisition', 'merger'],
+    'research': ['research', 'paper', 'arxiv', 'study', 'experiment', 'benchmark', 'model', 'neural', 'transformer', 'llm', 'gpt', 'diffusion', 'reinforcement', 'supervised', 'unsupervised', 'deep learning', 'machine learning', 'ai', 'artificial intelligence', 'nlp', 'computer vision', 'robotics', 'algorithm', 'dataset', 'training', 'inference', 'fine-tuning', 'rlhf', 'attention', 'embedding', 'token', 'multimodal', 'agent', 'reasoning'],
+    'tools': ['tool', 'platform', 'app', 'software', 'saas', 'product', 'release', 'update', 'feature', 'integration', 'automation', 'workflow', 'copilot', 'ide', 'editor', 'cli', 'sdk', 'plugin', 'extension', 'dashboard', 'analytics', 'monitoring'],
+    'regulation': ['regulation', 'policy', 'law', 'compliance', 'gdpr', 'privacy', 'safety', 'ethics', 'governance', 'ban', 'restrict', 'guideline', 'framework', 'act', 'bill', 'congress', 'senate', 'court', 'lawsuit', 'antitrust'],
 }
 
 
