@@ -40,7 +40,7 @@
         <div class="meta">
             <span class="badge badge-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
             <span>📡 {{ item.source_name }}</span>
-            <span>🕐 {{ item.fetched_at[:16] if item.fetched_at else '' }}</span>
+            <span>🕐 {{ item.fetched_at|fmt_date }}</span>
             {% if item.url %}
             <span>🔗 <a href="{{ item.url }}" target="_blank" style="color: #6366f1;">Abrir original</a></span>
             {% endif %}
