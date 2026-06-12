@@ -100,6 +100,9 @@ def debug():
         else:
             result[k] = "✗ NÃO configurada"
     return jsonify(result)
+
+
+@app.route('/api/trigger-distribute', methods=['POST'])
 @require_admin
 def trigger_distribute():
     """API: dispara distribuição manual."""
