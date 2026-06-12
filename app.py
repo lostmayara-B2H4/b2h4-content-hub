@@ -102,7 +102,36 @@ def debug():
     return jsonify(result)
 
 
-@app.route('/api/trigger-distribute', methods=['POST'])
+@app.route('/api/clean-titles', methods=['POST'])
+@require_admin
+def clean_titles():
+    """Limpa títulos existentes no banco."""
+    from database import clean_title
+    with get_db() as conn:
+        cur = conn.cursor()
+        if 'psycopg2' in str(type(conn)):
+            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /' OR title LIKE '%- %'")
+        else:
+            cur.execute("SELECT id, title FROM content_items WHERE title LIKE '%[%' OR title LIKE '% /' OR title LIKE '%- %'")
+        
+        rows = cur.fetchall()
+        updated = 0
+        
+        for row in rows:
+            item_id = row[0]
+            old_title = row[1]
+            if not old_title:
+                continue
+            new_title = clean_title(old_title)
+            if new_title != old_title:
+                if 'psycopg2' in str(type(conn)):
+                    cur.execute("UPDATE content_items SET title = %s WHERE id = %s", (new_title, item_id))
+                else:
+                    cur.execute("UPDATE content_items SET title = ? WHERE id = ?", (new_title, item_id))
+                updated += 1
+        
+        conn.commit()
+        return jsonify({'cleaned': updated})
 @require_admin
 def trigger_distribute():
     """API: dispara distribuição manual."""
