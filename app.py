@@ -100,23 +100,26 @@ def trigger_distribute():
 @app.route('/content/<int:content_id>')
 def content_detail(content_id):
     """Página de detalhe de um conteúdo."""
-    with get_db() as conn:
-        cur = conn.cursor()
-        if 'psycopg2' in str(type(conn)):
-            cur.execute("SELECT * FROM content_items WHERE id = %s", (content_id,))
-        else:
-            cur.execute("SELECT * FROM content_items WHERE id = ?", (content_id,))
-        item = cur.fetchone()
-        if not item:
-            return "Not found", 404
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            if 'psycopg2' in str(type(conn)):
+                cur.execute("SELECT * FROM content_items WHERE id = %s", (content_id,))
+            else:
+                cur.execute("SELECT * FROM content_items WHERE id = ?", (content_id,))
+            item = cur.fetchone()
+            if not item:
+                return "Not found", 404
+            
+            if 'psycopg2' in str(type(conn)):
+                cur.execute("SELECT * FROM content_analysis WHERE content_id = %s ORDER BY created_at DESC", (content_id,))
+            else:
+                cur.execute("SELECT * FROM content_analysis WHERE content_id = ? ORDER BY created_at DESC", (content_id,))
+            analyses = [dict(row) for row in cur.fetchall()]
         
-        if 'psycopg2' in str(type(conn)):
-            cur.execute("SELECT * FROM content_analysis WHERE content_id = %s ORDER BY created_at DESC", (content_id,))
-        else:
-            cur.execute("SELECT * FROM content_analysis WHERE content_id = ? ORDER BY created_at DESC", (content_id,))
-        analyses = [dict(row) for row in cur.fetchall()]
-    
-    return render_template('detail.html', item=dict(item), analyses=analyses)
+        return render_template('detail.html', item=dict(item), analyses=analyses)
+    except Exception as e:
+        return f"Erro: {e}", 500
 
 
 if __name__ == '__main__':
