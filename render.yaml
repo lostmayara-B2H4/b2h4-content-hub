@@ -3,7 +3,7 @@ services:
     name: b2h4-content-hub
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 wsgi:application
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -17,3 +17,5 @@ services:
         sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: OPENROUTER_API_KEY
+        sync: false

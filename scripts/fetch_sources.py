@@ -341,73 +341,48 @@ def fetch_reddit_rss(subreddit: str) -> List[Dict]:
 
 
 def fetch_github_trending() -> List[Dict]:
-    """Coleta repositórios trending do GitHub (via RSS)."""
-    import feedparser
+    """Coleta repositórios trending do GitHub via API (gratuita, sem key)."""
     items = []
     try:
         logger.info("Fetching GitHub Trending...")
-        # GitHub trending não tem RSS oficial, usamos a página
-        resp = requests.get('https://github.com/trending?since=daily', timeout=10, headers={
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-        })
+        # Usa a API pública do GitHub (rate limit: 60 req/h sem auth)
+        resp = requests.get(
+            'https://api.github.com/search/repositories?q=created:>2026-06-01&sort=stars&order=desc&per_page=15',
+            timeout=10,
+            headers={'Accept': 'application/vnd.github.v3+json'}
+        )
         
-        from html.parser import HTMLParser
+        if resp.status_code != 200:
+            logger.warning(f"GitHub API returned {resp.status_code}")
+            return items
         
-        class GitHubTrendingParser(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.repos = []
-                self.in_repo = False
-                self.current_repo = {}
-                self.in_desc = False
-            
-            def handle_starttag(self, tag, attrs):
-                attrs_dict = dict(attrs)
-                if tag == 'article' and 'Box-row' in attrs_dict.get('class', ''):
-                    self.in_repo = True
-                    self.current_repo = {}
-                elif self.in_repo and tag == 'h2':
-                    self.in_repo = True
-                elif self.in_repo and tag == 'a' and 'href' in attrs_dict:
-                    href = attrs_dict['href']
-                    if href.count('/') == 2 and not href.startswith('http'):
-                        self.current_repo['url'] = f"https://github.com{href}"
-                        self.current_repo['name'] = href.strip('/')
-                elif self.in_repo and tag == 'p':
-                    self.in_desc = True
-            
-            def handle_data(self, data):
-                if self.in_repo and 'url' in self.current_repo and not self.current_repo.get('title'):
-                    self.current_repo['title'] = data.strip()
-                elif self.in_desc:
-                    self.current_repo['desc'] = data.strip()
-            
-            def handle_endtag(self, tag):
-                if tag == 'article' and self.in_repo:
-                    if self.current_repo.get('url'):
-                        self.repos.append(self.current_repo)
-                    self.in_repo = False
-                    self.current_repo = {}
-                elif tag == 'p' and self.in_desc:
-                    self.in_desc = False
-        
-        parser = GitHubTrendingParser()
-        parser.feed(resp.text)
-        
-        for repo in parser.repos[:20]:
-            if not repo.get('url') or is_url_seen(repo['url']):
+        data = resp.json()
+        for repo in data.get('items', [])[:15]:
+            repo_name = repo.get('full_name', '') or repo.get('name', '')
+            if not repo_name:
                 continue
             
+            url = repo.get('html_url', '')
+            if not url or is_url_seen(url):
+                continue
+            
+            desc = repo.get('description', '') or ''
+            lang = repo.get('language', '') or ''
+            stars = repo.get('stargazers_count', 0)
+            
+            title = f"{repo_name}" + (f" ({lang})" if lang else "")
+            summary = desc[:500] if desc else f"{stars} stars"
+            
             item = {
-                'title': repo.get('title', ''),
-                'url': repo['url'],
-                'source_name': 'GitHub Trending',
+                'title': title,
+                'url': url,
+                'source_name': f'GitHub Trending',
                 'source_type': 'github',
                 'category': 'tools',
-                'summary': repo.get('desc', ''),
-                'raw_content': repo.get('desc', ''),
+                'summary': summary,
+                'raw_content': desc,
                 'published_at': datetime.now(timezone.utc).isoformat(),
-                'metadata': {'repo_name': repo.get('name', '')}
+                'metadata': {'repo': repo_name, 'stars': stars, 'lang': lang}
             }
             items.append(item)
         

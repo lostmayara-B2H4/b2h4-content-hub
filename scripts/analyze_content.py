@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """B2H4 Content Hub - Expert Analysis Engine.
-Analisa conteúdos usando expert roles do agency-agents-zh.
-Usa Hermes CLI para análise.
+Analisa conteúdos usando OpenRouter API (funciona no Render, sem Hermes CLI).
 """
 
 import os
 import sys
 import json
 import logging
-import subprocess
+import requests
 from typing import List, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -17,10 +16,14 @@ from database import get_unanalyzed_items, mark_analyzed, save_analysis
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger('analyze')
 
+# OpenRouter config
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', '')
+OPENROUTER_MODEL = os.environ.get('OPENROUTER_MODEL', 'openrouter/auto')
+
 # Path dos expert roles
 AGENTS_DIR = os.path.expanduser("~/.hermes/skills/agency-agents-zh")
 
-# Mapeamento categoria → expert role (arquivos reais)
+# Mapeamento categoria → expert role
 CATEGORY_ROLE_MAP = {
     'engineering': 'engineering/engineering-ai-engineer.md',
     'marketing': 'marketing/marketing-content-creator.md',
@@ -33,94 +36,79 @@ CATEGORY_ROLE_MAP = {
 
 
 def load_expert_role(role_file: str) -> str:
-    """Carrega o conteúdo de um expert role."""
+    """Carrega o prompt de um expert role."""
+    if not os.path.exists(AGENTS_DIR):
+        return "You are a specialized content analyst. Analyze the content and provide key insights."
+    
     path = os.path.join(AGENTS_DIR, role_file)
     if not os.path.exists(path):
-        logger.warning(f"Role não encontrado: {path}, usando default")
+        logger.warning(f"Role não encontrado: {role_file}")
         return "You are a specialized content analyst. Analyze the content and provide key insights."
     
     with open(path, 'r') as f:
         content = f.read()
     
-    # Remove frontmatter se existir
     if content.startswith('---'):
         parts = content.split('---', 2)
         if len(parts) >= 3:
             content = parts[2].strip()
     
-    return content[:3000]
+    return content[:2000]
 
 
-def analyze_with_hermes(role_content: str, title: str, summary: str, url: str) -> Dict:
-    """Analisa conteúdo usando Hermes CLI."""
+def analyze_with_openrouter(prompt: str, role_prompt: str) -> Dict:
+    """Analisa conteúdo usando OpenRouter API."""
+    if not OPENROUTER_API_KEY:
+        return {'analysis': 'OPENROUTER_API_KEY not configured', 'insights': [], 'relevance_score': 50}
     
-    prompt = f"""You are: {role_content[:500]}
-
-Analyze this content:
-Title: {title}
-URL: {url}
-Summary: {summary[:300]}
-
-Provide:
-EXECUTIVE_SUMMARY: [2-3 sentence summary]
-KEY_POINTS:
-- [point 1]
-- [point 2]
-- [point 3]
-RELEVANCE: [high/medium/low]
-TAGS: [tag1, tag2, tag3]"""
+    system_prompt = f"{role_prompt[:1000]}\n\nYou are analyzing content. Be concise and insightful."
     
     try:
-        result = subprocess.run(
-            ['hermes', 'chat', '--cli', prompt],
-            capture_output=True,
-            text=True,
-            timeout=120
+        resp = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://b2h4-content-hub.onrender.com',
+            },
+            json={
+                'model': OPENROUTER_MODEL,
+                'messages': [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': f"Analyze this content:\n\n{prompt}"}
+                ],
+                'max_tokens': 500,
+            },
+            timeout=30
         )
-        output = result.stdout.strip()
         
-        # Parse da resposta
-        analysis = {
-            'summary': '',
-            'key_points': [],
-            'relevance': 'medium',
-            'tags': []
-        }
+        if resp.status_code != 200:
+            logger.warning(f"OpenRouter API error: {resp.status_code}")
+            return {'analysis': f'API error: {resp.status_code}', 'insights': [], 'relevance_score': 50}
         
-        current_section = None
-        for line in output.split('\n'):
+        data = resp.json()
+        analysis = data['choices'][0]['message']['content']
+        
+        # Parse basic structure
+        insights = []
+        relevance = 50
+        for line in analysis.split('\n'):
             line = line.strip()
-            if line.startswith('EXECUTIVE_SUMMARY:'):
-                analysis['summary'] = line.split(':', 1)[1].strip()
-                current_section = 'summary'
-            elif line.startswith('KEY_POINTS:'):
-                current_section = 'points'
-            elif line.startswith('RELEVANCE:'):
-                rel = line.split(':', 1)[1].strip().lower()
-                analysis['relevance'] = 'high' if 'high' in rel else ('low' if 'low' in rel else 'medium')
-                current_section = None
-            elif line.startswith('TAGS:'):
-                tags_str = line.split(':', 1)[1].strip()
-                analysis['tags'] = [t.strip() for t in tags_str.split(',')]
-                current_section = None
-            elif line.startswith('- ') and current_section == 'points':
-                analysis['key_points'].append(line[2:])
-            elif current_section == 'summary' and line:
-                analysis['summary'] += ' ' + line
-        
-        relevance_score = 80 if analysis['relevance'] == 'high' else (50 if analysis['relevance'] == 'medium' else 20)
+            if line.startswith('- '):
+                insights.append(line[2:])
+            if 'high' in line.lower() and ('relevance' in line.lower() or 'relev' in line.lower()):
+                relevance = 80
+            elif 'low' in line.lower() and ('relevance' in line.lower() or 'relev' in line.lower()):
+                relevance = 20
         
         return {
-            'analysis': output,
-            'insights': analysis['key_points'],
-            'relevance_score': relevance_score
+            'analysis': analysis,
+            'insights': insights[:5],
+            'relevance_score': relevance
         }
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout na análise Hermes")
-        return {'analysis': f'Analysis timeout for: {title}', 'insights': [], 'relevance_score': 50}
     except Exception as e:
-        logger.error(f"Erro na análise: {e}")
-        return {'analysis': f'Auto-analysis: {title}', 'insights': [], 'relevance_score': 50}
+        logger.error(f"OpenRouter API error: {e}")
+        return {'analysis': f'Error: {e}', 'insights': [], 'relevance_score': 50}
 
 
 def analyze_content_item(item: Dict) -> Optional[Dict]:
@@ -131,14 +119,21 @@ def analyze_content_item(item: Dict) -> Optional[Dict]:
     
     logger.info(f"Analisando [{item['id']}]: {item['title'][:50]}... [role: {role_file}]")
     
-    result = analyze_with_hermes(
-        role_content=role_content,
-        title=item['title'],
-        summary=item.get('summary', ''),
-        url=item['url']
-    )
+    prompt = f"""Title: {item['title']}
+URL: {item.get('url', '')}
+Summary: {item.get('summary', '')[:500]}
+
+Provide:
+EXECUTIVE_SUMMARY: [2-3 sentence summary]
+KEY_POINTS:
+- [point 1]
+- [point 2]
+- [point 3]
+RELEVANCE: [high/medium/low]
+TAGS: [tag1, tag2, tag3]"""
     
-    # Salva análise no banco
+    result = analyze_with_openrouter(prompt, role_content)
+    
     save_analysis(
         content_id=item['id'],
         expert_role=role_file,
@@ -147,9 +142,7 @@ def analyze_content_item(item: Dict) -> Optional[Dict]:
         relevance=result['relevance_score']
     )
     
-    # Marca como analisado
     mark_analyzed(item['id'])
-    
     return result
 
 
@@ -168,10 +161,10 @@ def analyze_batch(limit: int = 10) -> Dict:
             stats['by_category'][cat] = stats['by_category'].get(cat, 0) + 1
             logger.info(f"  ✅ {item['title'][:50]}")
         except Exception as e:
-            logger.error(f"Erro analisando {item.get('title', 'unknown')}: {e}")
+            logger.error(f"Erro: {item.get('title', '')}: {e}")
             stats['errors'] += 1
     
-    logger.info(f"Análise completa: {stats['analyzed']} analisados, {stats['errors']} erros")
+    logger.info(f"Completa: {stats['analyzed']} analisados, {stats['errors']} erros")
     return stats
 
 

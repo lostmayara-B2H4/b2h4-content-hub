@@ -7,6 +7,7 @@ Reaproveita estrutura da newsletter.
 import os
 import sys
 import json
+import random
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -46,7 +47,10 @@ def require_admin(f):
 def index():
     """Dashboard principal."""
     stats = get_stats()
-    recent = get_recent_items(hours=48)[:20]
+    recent = get_recent_items(hours=72)
+    # Embaralha para mostrar mix de fontes
+    random.shuffle(recent)
+    recent = recent[:20]
     return render_template('index.html', stats=stats, items=recent)
 
 
