@@ -123,11 +123,19 @@ def debug():
         v = os.environ.get(k, '')
         result[k] = f"✓ ({v[:8]}...{v[-4:]})" if v else "✗ NÃO configurada"
     return jsonify(result)
-
-
 @app.route('/api/clean-titles', methods=['POST'])
 @require_admin
 def clean_titles():
+    """Limpa títulos existentes no banco."""
+    import re as re_module
+    def _clean(title):
+        if not title:
+            return title
+        title = re_module.sub(r'\s*\[([A-Z]{1,3})\]\s*$', '', title).strip()
+        title = re_module.sub(r'\s+', ' ', title).strip()
+        title = re_module.sub(r'\s*[/\-|]\s*$', '', title).strip()
+        return title if title else ''
+    
     with get_db() as conn:
         cur = conn.cursor()
         if 'psycopg2' in str(type(conn)):
@@ -140,7 +148,7 @@ def clean_titles():
             item_id, old_title = row[0], row[1]
             if not old_title:
                 continue
-            new_title = clean_title(old_title)
+            new_title = _clean(old_title)
             if new_title != old_title:
                 if 'psycopg2' in str(type(conn)):
                     cur.execute("UPDATE content_items SET title = %s WHERE id = %s", (new_title, item_id))
