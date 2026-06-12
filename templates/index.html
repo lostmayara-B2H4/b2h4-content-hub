@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2H4 Content Hub</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #222; margin-bottom: 30px; }
+        header h1 { font-size: 24px; color: #fff; }
+        header h1 span { color: #6366f1; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .stat-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; }
+        .stat-card h3 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #fff; margin-top: 5px; }
+        .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .filters a { padding: 8px 16px; background: #111; border: 1px solid #222; border-radius: 8px; color: #888; text-decoration: none; font-size: 14px; }
+        .filters a:hover, .filters a.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+        .items { display: flex; flex-direction: column; gap: 10px; }
+        .item { background: #111; border: 1px solid #222; border-radius: 12px; padding: 16px 20px; transition: border-color 0.2s; }
+        .item:hover { border-color: #6366f1; }
+        .item a { color: #fff; text-decoration: none; font-weight: 600; font-size: 16px; }
+        .item a:hover { color: #6366f1; }
+        .item .meta { display: flex; gap: 15px; margin-top: 8px; font-size: 13px; color: #666; }
+        .item .meta span { display: flex; align-items: center; gap: 4px; }
+        .cat-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .cat-engineering { background: #1e3a5f; color: #60a5fa; }
+        .cat-marketing { background: #3d1f5c; color: #c084fc; }
+        .cat-finance { background: #1f3d1f; color: #4ade80; }
+        .cat-research { background: #3d2f1f; color: #fbbf24; }
+        .cat-tools { background: #1f2d3d; color: #38bdf8; }
+        .cat-general { background: #222; color: #888; }
+        .empty { text-align: center; padding: 60px; color: #444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📰 B2H4 <span>Content Hub</span></h1>
+            <span style="color: #444; font-size: 14px;">AI-powered content intelligence</span>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Coletados</h3>
+                <div class="value">{{ stats.get('total_items', 0) }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Analisados</h3>
+                <div class="value">{{ stats.get('analyzed_items', 0) }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Fontes</h3>
+                <div class="value">{{ stats.get('by_source', {})|length }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Categorias</h3>
+                <div class="value">{{ stats.get('by_category', {})|length }}</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <a href="/" class="active">Todos</a>
+            <a href="/?category=engineering">⚙️ Engineering</a>
+            <a href="/?category=marketing">📈 Marketing</a>
+            <a href="/?category=finance">💰 Finance</a>
+            <a href="/?category=research">🔬 Research</a>
+            <a href="/?category=tools">🛠️ Tools</a>
+        </div>
+
+        <div class="items">
+            {% if items %}
+                {% for item in items %}
+                <div class="item">
+                    <a href="/content/{{ item.id }}" target="_blank">{{ item.title }}</a>
+                    <div class="meta">
+                        <span class="cat-badge cat-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
+                        <span>📡 {{ item.source_name }}</span>
+                        <span>🕐 {{ item.fetched_at[:16] if item.fetched_at else '' }}</span>
+                        {% if item.analyzed %}
+                        <span>✅ Analisado</span>
+                        {% else %}
+                        <span>⏳ Pendente</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty">
+                    <h2>Nenhum conteúdo ainda</h2>
+                    <p>Aguarde a primeira coleta ou dispare manualmente.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
