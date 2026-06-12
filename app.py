@@ -125,7 +125,16 @@ def debug():
         v = os.environ.get(k, '')
         result[k] = f"✓ ({v[:8]}...{v[-4:]})" if v else "✗ NÃO configurada"
     return jsonify(result)
-@app.route('/api/dedup', methods=['POST'])
+@app.route('/api/send-to-newsletter/<int:content_id>', methods=['POST'])
+@require_admin
+def send_to_newsletter(content_id):
+    """Envia um item do Content Hub para a newsletter."""
+    from database import send_to_newsletter as _send
+    result = _send(content_id)
+    if result:
+        return jsonify({'success': True, 'message': 'Enviado para newsletter!'})
+    else:
+        return jsonify({'success': False, 'message': 'Item não encontrado ou já enviado'}), 400
 @require_admin
 def dedup():
     """Remove duplicatas por URL, mantendo o mais antigo."""

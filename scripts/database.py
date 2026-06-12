@@ -155,7 +155,50 @@ def save_content_item(item: Dict) -> Optional[int]:
                 return None
 
 
-def get_unanalyzed_items(limit: int = 50) -> List[Dict]:
+def send_to_newsletter(content_id: int) -> bool:
+    """Envia um content_item para a tabela news_items da newsletter."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        
+        # Busca o item no Content Hub
+        if _use_postgres():
+            cur.execute("SELECT * FROM content_items WHERE id = %s", (content_id,))
+        else:
+            cur.execute("SELECT * FROM content_items WHERE id = ?", (content_id,))
+        
+        item = cur.fetchone()
+        if not item:
+            return False
+        
+        # Verifica se já foi enviado
+        if _use_postgres():
+            cur.execute("SELECT 1 FROM news_items WHERE source_url = %s", (item['url'],))
+        else:
+            cur.execute("SELECT 1 FROM news_items WHERE source_url = ?", (item['url'],))
+        
+        if cur.fetchone():
+            return False  # Já existe
+        
+        # Insere na news_items da newsletter
+        title = item.get('title', '')[:300]
+        summary = item.get('summary', '')[:1000] if item.get('summary') else ''
+        source_url = item.get('url', '')
+        source_name = item.get('source_name', 'Content Hub')
+        category = item.get('category', 'general')
+        
+        if _use_postgres():
+            cur.execute("""
+                INSERT INTO news_items (title, summary, source_url, source_name, category, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
+            """, (title, summary, source_url, source_name, category))
+        else:
+            cur.execute("""
+                INSERT INTO news_items (title, summary, source_url, source_name, category, status, created_at)
+                VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
+            """, (title, summary, source_url, source_name, category))
+        
+        conn.commit()
+        return True
     """Busca conteúdos não analisados."""
     with get_db() as conn:
         cur = conn.cursor()

@@ -181,6 +181,56 @@
             <p><a href="/">Voltar ao hub</a> para ver outros conteúdos.</p>
         </div>
         {% endif %}
+        
+        <!-- Send to Newsletter -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #222;">
+            <button id="sendNewsletterBtn" onclick="sendToNewsletter()" style="
+                padding: 12px 24px;
+                background: #6366f1;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background 0.2s;
+            " onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
+                📧 Enviar para Newsletter
+            </button>
+            <span id="newsletterStatus" style="margin-left: 12px; font-size: 13px; color: #666;"></span>
+        </div>
     </div>
+    
+    <script>
+        function sendToNewsletter() {
+            const btn = document.getElementById('sendNewsletterBtn');
+            const status = document.getElementById('newsletterStatus');
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            status.textContent = '';
+            
+            fetch('/api/send-to-newsletter/{{ item.id }}?key=1234', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        status.textContent = '✅ ' + d.message;
+                        status.style.color = '#4ade80';
+                        btn.textContent = '✅ Enviado';
+                        btn.style.background = '#4ade80';
+                    } else {
+                        status.textContent = '⚠️ ' + d.message;
+                        status.style.color = '#fbbf24';
+                        btn.disabled = false;
+                        btn.textContent = '📧 Enviar para Newsletter';
+                    }
+                })
+                .catch(e => {
+                    status.textContent = '❌ Erro ao enviar';
+                    status.style.color = '#f87171';
+                    btn.disabled = false;
+                    btn.textContent = '📧 Enviar para Newsletter';
+                });
+        }
+    </script>
 </body>
 </html>
