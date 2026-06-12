@@ -88,7 +88,18 @@ def trigger_analyze():
     return jsonify(stats)
 
 
-@app.route('/api/trigger-distribute', methods=['POST'])
+@app.route('/api/debug')
+def debug():
+    """Diagnóstico - verifica env vars disponíveis."""
+    keys = ['OPENROUTER_API_KEY', 'DATABASE_URL', 'RESEND_API_KEY', 'TELEGRAM_BOT_TOKEN']
+    result = {}
+    for k in keys:
+        v = os.environ.get(k, '')
+        if v:
+            result[k] = f"✓ configurada ({v[:8]}...{v[-4:]})"
+        else:
+            result[k] = "✗ NÃO configurada"
+    return jsonify(result)
 @require_admin
 def trigger_distribute():
     """API: dispara distribuição manual."""
