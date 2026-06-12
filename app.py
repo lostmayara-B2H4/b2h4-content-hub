@@ -148,6 +148,9 @@ def dedup():
         removed = cur.rowcount
         conn.commit()
         return jsonify({'removed': removed})
+
+
+@app.route('/api/clean-titles', methods=['POST'])
 @require_admin
 def clean_titles():
     """Limpa títulos existentes no banco usando SQL puro."""
