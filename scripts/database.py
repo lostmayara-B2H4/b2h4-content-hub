@@ -9,17 +9,8 @@ from contextlib import contextmanager
 from typing import Generator, Any, Optional, Dict, List
 from urllib.parse import urlparse, quote
 
-# Reaproveita config da newsletter
-import sys
-sys.path.insert(0, os.path.expanduser("~/b2h4-newsletter/scripts"))
-
-try:
-    from config import Config
-    DATABASE_URL = Config.DATABASE_URL
-    DB_PATH = Config.DB_PATH
-except ImportError:
-    DATABASE_URL = os.environ.get("DATABASE_URL", "")
-    DB_PATH = os.path.join(os.path.dirname(__file__), "data", "content_hub.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "content_hub.db")
 
 
 def _use_postgres() -> bool:
