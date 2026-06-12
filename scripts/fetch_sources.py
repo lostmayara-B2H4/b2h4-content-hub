@@ -100,6 +100,26 @@ CATEGORY_KEYWORDS = {
 }
 
 
+def clean_title(title: str, source_type: str = '') -> str:
+    """Limpa título removendo flairs, truncamentos e caracteres estranhos."""
+    import re
+    
+    # Remove flairs do Reddit: [P], [N], [D], [R], etc.
+    title = re.sub(r'\s*\[([A-Z]{1,3})\]\s*$', '', title).strip()
+    
+    # Remove múltiplos espaços
+    title = re.sub(r'\s+', ' ', title).strip()
+    
+    # Remove caracteres estranhos no final (/, -, |)
+    title = re.sub(r'\s*[/\-|]\s*$', '', title).strip()
+    
+    # Se ficou vazio, retorna original
+    if not title:
+        return title
+    
+    return title
+
+
 def classify_category(title: str, summary: str = '') -> str:
     """Classifica conteúdo por categoria baseado em keywords."""
     text = f"{title} {summary}".lower()

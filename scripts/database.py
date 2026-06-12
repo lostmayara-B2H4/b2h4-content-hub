@@ -4,7 +4,7 @@ Reaproveita a conexão Supabase da newsletter.
 """
 
 import os
-import re
+import re as re_module
 from contextlib import contextmanager
 from typing import Generator, Any, Optional, Dict, List
 from urllib.parse import urlparse, quote
@@ -109,8 +109,24 @@ def _init_sqlite(conn):
     """)
 
 
+def clean_title(title: str) -> str:
+    """Limpa título removendo flairs, truncamentos e caracteres estranhos."""
+    if not title:
+        return title
+    # Remove flairs do Reddit: [P], [N], [D], [R], etc.
+    title = re_module.sub(r'\s*\[([A-Z]{1,3})\]\s*$', '', title).strip()
+    # Remove múltiplos espaços
+    title = re_module.sub(r'\s+', ' ', title).strip()
+    # Remove caracteres estranhos no final (/, -, |)
+    title = re_module.sub(r'\s*[/\-|]\s*$', '', title).strip()
+    return title if title else ''
+
+
 def save_content_item(item: Dict) -> Optional[int]:
     """Salva um content_item. Retorna o ID ou None se duplicado."""
+    # Limpa o título antes de salvar
+    if item.get('title'):
+        item['title'] = clean_title(item['title'])
     with get_db() as conn:
         cur = conn.cursor()
         if _use_postgres():
