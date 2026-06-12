@@ -113,12 +113,13 @@
                 <input type="text" id="searchInput" placeholder="Buscar conteúdo..." value="{{ request.args.get('q', '') }}" onkeydown="if(event.key==='Enter')doSearch()">
             </div>
             <div class="filters">
-                <a href="/" class="{{ 'active' if not request.args.get('category') else '' }}">Todos</a>
-                <a href="/?category=engineering" class="{{ 'active' if request.args.get('category') == 'engineering' else '' }}">⚙️ Engineering</a>
-                <a href="/?category=marketing" class="{{ 'active' if request.args.get('category') == 'marketing' else '' }}">📈 Marketing</a>
-                <a href="/?category=finance" class="{{ 'active' if request.args.get('category') == 'finance' else '' }}">💰 Finance</a>
-                <a href="/?category=research" class="{{ 'active' if request.args.get('category') == 'research' else '' }}">🔬 Research</a>
-                <a href="/?category=tools" class="{{ 'active' if request.args.get('category') == 'tools' else '' }}">🛠️ Tools</a>
+                <a href="/?q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if not request.args.get('category') else '' }}">Todos</a>
+                <a href="/?category=engineering&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'engineering' else '' }}">⚙️ Engineering</a>
+                <a href="/?category=marketing&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'marketing' else '' }}">📈 Marketing</a>
+                <a href="/?category=finance&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'finance' else '' }}">💰 Finance</a>
+                <a href="/?category=research&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'research' else '' }}">🔬 Research</a>
+                <a href="/?category=tools&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'tools' else '' }}">🛠️ Tools</a>
+                <a href="/?category=general&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'general' else '' }}">📄 General</a>
             </div>
             <select class="sort-select" id="sortSelect" onchange="doSort()">
                 <option value="date" {{ 'selected' if request.args.get('sort') == 'date' else '' }}>Mais recentes</option>
@@ -127,8 +128,11 @@
         </div>
 
         <div class="results-info">
-            Mostrando {{ items|length }} de {{ stats.get('total_items', 0) }} itens
+            {% set start = ((current_page - 1) * 50) + 1 %}
+            {% set end = [current_page * 50, total_items]|min %}
+            Mostrando {{ start }}-{{ end }} de {{ total_items }} itens
             {% if request.args.get('q') %} — busca: "{{ request.args.get('q') }}"{% endif %}
+            {% if request.args.get('category') %} — categoria: {{ request.args.get('category') }}{% endif %}
         </div>
 
         <!-- Items -->

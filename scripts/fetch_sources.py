@@ -390,14 +390,11 @@ def fetch_github_trending() -> List[Dict]:
             lang = repo.get('language', '') or ''
             stars = repo.get('stargazers_count', 0)
             
-            # Título mais informativo: repo (lang) — descrição curta
+            # Título: repo_name: description (truncado em 80 chars)
             title = repo_name
-            if lang:
-                title += f" ({lang})"
             if desc:
-                # Limita descrição a 80 chars
                 short_desc = desc[:80] + ('...' if len(desc) > 80 else '')
-                title += f" — {short_desc}"
+                title += f": {short_desc}"
             
             summary = desc[:500] if desc else f"⭐ {stars:,} stars"
             

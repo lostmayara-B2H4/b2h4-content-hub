@@ -110,9 +110,13 @@ def _init_sqlite(conn):
 
 
 def clean_title(title: str) -> str:
-    """Limpa título removendo flairs, truncamentos e caracteres estranhos."""
+    """Limpa título removendo flairs, emojis, hashtags e truncamentos."""
     if not title:
         return title
+    # Remove emojis (unicode ranges)
+    title = re_module.sub(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U0000FE00-\U0000FE0F\U0001F900-\U0001F9FF\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF\U00002600-\U000026FF]+', '', title).strip()
+    # Remove hashtags: #word
+    title = re_module.sub(r'#\w+', '', title).strip()
     # Remove flairs do Reddit: [P], [N], [D], [R], etc.
     title = re_module.sub(r'\s*\[([A-Z]{1,3})\]\s*$', '', title).strip()
     # Remove múltiplos espaços

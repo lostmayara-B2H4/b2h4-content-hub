@@ -74,7 +74,9 @@ def index():
                          stats=stats, 
                          items=items_page,
                          current_page=page,
-                         total_pages=total_pages)
+                         total_pages=total_pages,
+                         total_items=total,
+                         per_page=per_page)
 
 
 @app.route('/api/stats')
@@ -123,7 +125,29 @@ def debug():
         v = os.environ.get(k, '')
         result[k] = f"✓ ({v[:8]}...{v[-4:]})" if v else "✗ NÃO configurada"
     return jsonify(result)
-@app.route('/api/clean-titles', methods=['POST'])
+@app.route('/api/dedup', methods=['POST'])
+@require_admin
+def dedup():
+    """Remove duplicatas por URL, mantendo o mais antigo."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        if 'psycopg2' in str(type(conn)):
+            cur.execute("""
+                DELETE FROM content_items 
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM content_items GROUP BY url
+                )
+            """)
+        else:
+            cur.execute("""
+                DELETE FROM content_items 
+                WHERE id NOT IN (
+                    SELECT MIN(id) FROM content_items GROUP BY url
+                )
+            """)
+        removed = cur.rowcount
+        conn.commit()
+        return jsonify({'removed': removed})
 @require_admin
 def clean_titles():
     """Limpa títulos existentes no banco usando SQL puro."""
