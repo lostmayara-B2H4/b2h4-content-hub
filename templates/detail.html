@@ -9,25 +9,60 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; }
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
         header { padding: 20px 0; border-bottom: 1px solid #222; margin-bottom: 30px; }
-        header a { color: #6366f1; text-decoration: none; }
-        h1 { font-size: 24px; color: #fff; margin: 20px 0 10px; }
-        .meta { color: #666; font-size: 14px; margin-bottom: 20px; }
-        .meta span { margin-right: 15px; }
-        .summary { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-        .summary h2 { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .summary p { line-height: 1.6; }
+        header a { color: #6366f1; text-decoration: none; font-size: 14px; }
+        h1 { font-size: 22px; color: #fff; margin: 20px 0 10px; line-height: 1.3; }
+        .meta { color: #666; font-size: 13px; margin-bottom: 25px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .meta span { display: flex; align-items: center; gap: 4px; }
+        
+        .cat-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .cat-engineering { background: #1e3a5f; color: #60a5fa; }
+        .cat-marketing { background: #3d1f5c; color: #c084fc; }
+        .cat-finance { background: #1f3d1f; color: #4ade80; }
+        .cat-research { background: #3d2f1f; color: #fbbf24; }
+        .cat-tools { background: #1f2d3d; color: #38bdf8; }
+        .cat-general { background: #222; color: #888; }
+        
+        .summary { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
+        .summary h2 { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .summary p { line-height: 1.7; color: #ccc; }
+        
         .analyses { margin-top: 30px; }
-        .analyses h2 { font-size: 18px; color: #fff; margin-bottom: 15px; }
-        .analysis { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
-        .analysis .role { font-size: 12px; color: #6366f1; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .analysis .content { line-height: 1.6; white-space: pre-wrap; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-        .badge-engineering { background: #1e3a5f; color: #60a5fa; }
-        .badge-marketing { background: #3d1f5c; color: #c084fc; }
-        .badge-finance { background: #1f3d1f; color: #4ade80; }
-        .badge-research { background: #3d2f1f; color: #fbbf24; }
-        .badge-tools { background: #1f2d3d; color: #38bdf8; }
-        .badge-general { background: #222; color: #888; }
+        .analyses h2 { font-size: 18px; color: #fff; margin-bottom: 20px; }
+        
+        .analysis { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .analysis .role { font-size: 11px; color: #6366f1; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: 600; }
+        
+        .analysis-block { margin-bottom: 15px; }
+        .analysis-block .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 600; }
+        .analysis-block .content { line-height: 1.7; color: #ccc; }
+        
+        .exec-summary { background: #1a1a2e; border-left: 3px solid #6366f1; padding: 12px 16px; border-radius: 0 8px 8px 0; }
+        .exec-summary .content { color: #e0e0e0; font-size: 15px; }
+        
+        .key-points { list-style: none; padding: 0; }
+        .key-points li { padding: 6px 0; padding-left: 20px; position: relative; color: #ccc; line-height: 1.6; }
+        .key-points li::before { content: "→"; position: absolute; left: 0; color: #6366f1; }
+        
+        .relevance { display: inline-flex; align-items: center; gap: 6px; }
+        .relevance-bar { width: 60px; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+        .relevance-fill { height: 100%; border-radius: 3px; }
+        .relevance-high .relevance-fill { background: #4ade80; width: 90%; }
+        .relevance-medium .relevance-fill { background: #fbbf24; width: 50%; }
+        .relevance-low .relevance-fill { background: #f87171; width: 20%; }
+        .relevance-text { font-size: 12px; font-weight: 600; }
+        .relevance-high .relevance-text { color: #4ade80; }
+        .relevance-medium .relevance-text { color: #fbbf24; }
+        .relevance-low .relevance-text { color: #f87171; }
+        
+        .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+        .tag { padding: 3px 10px; background: #1a1a2e; border: 1px solid #333; border-radius: 12px; font-size: 12px; color: #888; }
+        
+        .raw-analysis { margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; }
+        .raw-analysis .label { font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+        .raw-analysis pre { font-size: 12px; color: #555; white-space: pre-wrap; line-height: 1.5; max-height: 200px; overflow-y: auto; }
+        
+        .no-analysis { text-align: center; padding: 40px; color: #444; }
+        .no-analysis a { color: #6366f1; }
     </style>
 </head>
 <body>
@@ -38,7 +73,7 @@
 
         <h1>{{ item.title }}</h1>
         <div class="meta">
-            <span class="badge badge-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
+            <span class="cat-badge cat-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
             <span>📡 {{ item.source_name }}</span>
             <span>🕐 {{ item.fetched_at|fmt_date }}</span>
             {% if item.url %}
@@ -55,13 +90,95 @@
 
         {% if analyses %}
         <div class="analyses">
-            <h2>🎯 Análises dos Especialistas</h2>
+            <h2>🎯 Análise do Especialista</h2>
             {% for a in analyses %}
             <div class="analysis">
                 <div class="role">{{ a.expert_role }}</div>
-                <div class="content">{{ a.analysis }}</div>
+                
+                {% set analysis_text = a.analysis %}
+                {% set has_structure = 'EXECUTIVE_SUMMARY' in analysis_text or 'KEY_POINTS' in analysis_text %}
+                
+                {% if has_structure %}
+                    {# Parse structured analysis #}
+                    {% set sections = {} %}
+                    {% set current = 'raw' %}
+                    {% set lines = analysis_text.split('\n') %}
+                    {% for line in lines %}
+                        {% set line = line.strip() %}
+                        {% if line.startswith('EXECUTIVE_SUMMARY:') %}
+                            {% set current = 'exec' %}
+                            {% set _ = sections.update({'exec': line.replace('EXECUTIVE_SUMMARY:', '').strip()}) %}
+                        {% elif line.startswith('KEY_POINTS:') %}
+                            {% set current = 'points' %}
+                        {% elif line.startswith('RELEVANCE:') %}
+                            {% set current = 'relevance' %}
+                            {% set rel_text = line.replace('RELEVANCE:', '').strip().lower() %}
+                            {% set _ = sections.update({'relevance': rel_text}) %}
+                        {% elif line.startswith('TAGS:') %}
+                            {% set current = 'tags' %}
+                            {% set _ = sections.update({'tags': line.replace('TAGS:', '').strip()}) %}
+                        {% elif line.startswith('- ') and current == 'points' %}
+                            {% set _ = sections.update({'points': (sections.get('points', []) + [line[2:]])}) %}
+                        {% elif current == 'exec' and line %}
+                            {% set _ = sections.update({'exec': sections.get('exec', '') + ' ' + line}) %}
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if sections.get('exec') %}
+                    <div class="analysis-block exec-summary">
+                        <div class="label">Resumo Executivo</div>
+                        <div class="content">{{ sections.exec }}</div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if sections.get('points') %}
+                    <div class="analysis-block">
+                        <div class="label">Pontos-chave</div>
+                        <ul class="key-points">
+                            {% for point in sections.points %}
+                            <li>{{ point }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    
+                    {% if sections.get('relevance') %}
+                    <div class="analysis-block">
+                        <div class="label">Relevância</div>
+                        <div class="relevance relevance-{{ 'high' if 'alta' in sections.relevance or 'high' in sections.relevance else ('low' if 'baixa' in sections.relevance or 'low' in sections.relevance else 'medium') }}">
+                            <div class="relevance-bar"><div class="relevance-fill"></div></div>
+                            <span class="relevance-text">{{ sections.relevance }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if sections.get('tags') %}
+                    <div class="analysis-block">
+                        <div class="label">Tags</div>
+                        <div class="tags">
+                            {% for tag in sections.tags.split(',') %}
+                            <span class="tag">{{ tag.strip() }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="raw-analysis">
+                        <div class="label">Análise completa</div>
+                        <pre>{{ analysis_text }}</pre>
+                    </div>
+                {% else %}
+                    <div class="analysis-block">
+                        <div class="content" style="white-space: pre-wrap;">{{ analysis_text }}</div>
+                    </div>
+                {% endif %}
             </div>
             {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-analysis">
+            <p>Este conteúdo ainda não foi analisado.</p>
+            <p><a href="/">Voltar ao hub</a> para ver outros conteúdos.</p>
         </div>
         {% endif %}
     </div>
