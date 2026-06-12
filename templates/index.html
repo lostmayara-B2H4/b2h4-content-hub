@@ -78,7 +78,7 @@
                     <div class="meta">
                         <span class="cat-badge cat-{{ item.category or 'general' }}">{{ item.category or 'general' }}</span>
                         <span>📡 {{ item.source_name }}</span>
-                        <span>🕐 {{ item.fetched_at[:16] if item.fetched_at else '' }}</span>
+                        <span>🕐 {{ item.fetched_at|fmt_date }}</span>
                         {% if item.analyzed %}
                         <span>✅ Analisado</span>
                         {% else %}

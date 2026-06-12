@@ -18,6 +18,17 @@ from database import get_db, get_stats, get_recent_items
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'b2h4-content-hub-dev')
 
+@app.template_filter('fmt_date')
+def fmt_date(dt):
+    """Formata data para exibição. Funciona com string (SQLite) e datetime (PostgreSQL)."""
+    if dt is None:
+        return ''
+    if isinstance(dt, str):
+        return dt[:16]
+    if hasattr(dt, 'strftime'):
+        return dt.strftime('%d/%m/%Y %H:%M')
+    return str(dt)[:16]
+
 ADMIN_KEY = os.environ.get('ADMIN_KEY', '1234')
 
 
