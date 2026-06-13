@@ -199,6 +199,7 @@ def send_to_newsletter(content_id: int) -> bool:
         
         conn.commit()
         return True
+def get_unanalyzed_items(limit: int = 10) -> List[Dict]:
     """Busca conteúdos não analisados."""
     with get_db() as conn:
         cur = conn.cursor()
