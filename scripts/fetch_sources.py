@@ -144,7 +144,7 @@ def fetch_rss_feed(name: str, url: str) -> List[Dict]:
             logger.warning(f"Feed vazio ou erro: {name}")
             return items
         
-        for entry in feed.entries[:20]:  # Limita a 20 por feed
+        for entry in feed.entries[:5]:  # Top 5 mais relevantes por feed RSS
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -172,7 +172,7 @@ def fetch_rss_feed(name: str, url: str) -> List[Dict]:
             }
             items.append(item)
         
-        logger.info(f"  {name}: {len(items)} novos items")
+        logger.info(f"  {name}: {len(items)} novos items (top 5)")
     except Exception as e:
         logger.error(f"Erro no feed {name}: {e}")
     
@@ -186,7 +186,7 @@ def fetch_arxiv() -> List[Dict]:
         logger.info("Fetching arXiv API...")
         # Busca papers de IA/ML dos últimos dias
         query = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.CV"
-        url = f"https://export.arxiv.org/api/query?search_query={query}&sortBy=submittedDate&sortOrder=descending&max_results=30"
+        url = f"https://export.arxiv.org/api/query?search_query={query}&sortBy=submittedDate&sortOrder=descending&max_results=5"
         
         import feedparser
         feed = feedparser.parse(url)
@@ -233,7 +233,7 @@ def fetch_youtube_rss(channel_name: str, channel_id: str) -> List[Dict]:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
         feed = feedparser.parse(url)
         
-        for entry in feed.entries[:10]:  # Limita a 10 por canal
+        for entry in feed.entries[:5]:  # Top 5 mais relevantes por canal
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -271,7 +271,7 @@ def fetch_hackernews() -> List[Dict]:
         logger.info("Fetching Hacker News...")
         # Busca top stories
         resp = requests.get('https://hacker-news.firebaseio.com/v0/topstories.json', timeout=10)
-        story_ids = resp.json()[:30]
+        story_ids = resp.json()[:5]  # Top 5 mais relevantes do HN
         
         for story_id in story_ids:
             try:
@@ -325,7 +325,7 @@ def fetch_reddit_rss(subreddit: str) -> List[Dict]:
         url = f"https://old.reddit.com/r/{subreddit}/.rss"
         feed = feedparser.parse(url)
         
-        for entry in feed.entries[:15]:
+        for entry in feed.entries[:5]:  # Top 5 mais relevantes por subreddit
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -377,7 +377,7 @@ def fetch_github_trending() -> List[Dict]:
             return items
         
         data = resp.json()
-        for repo in data.get('items', [])[:15]:
+        for repo in data.get('items', [])[:5]:  # Top 5 mais relevantes do GitHub
             repo_name = repo.get('full_name', '') or repo.get('name', '')
             if not repo_name:
                 continue
