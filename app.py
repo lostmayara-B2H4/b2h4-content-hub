@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import math
+import threading
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -12,6 +13,13 @@ from flask import Flask, render_template, request, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 from database import get_db, get_stats, get_recent_items, clean_title
+
+# App start time for uptime tracking
+APP_START_TIME = datetime.now(timezone.utc)
+
+# Simple in-memory rate limit cache for analyze-batch
+_rate_limit_lock = threading.Lock()
+_last_analyze_call = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'b2h4-content-hub-dev')
@@ -211,6 +219,63 @@ def content_detail(content_id):
     except Exception as e:
         return f"Erro: {e}", 500
 
+
+# ── Health Endpoint ──────────────────────────────────────────────────
+
+@app.route('/health')
+def health():
+    """Retorna saúde da aplicação em JSON."""
+    stats = get_stats()
+    now = datetime.now(timezone.utc)
+    uptime_seconds = (now - APP_START_TIME).total_seconds()
+    return jsonify({
+        'status': 'ok',
+        'timestamp': now.isoformat(),
+        'total_items': stats.get('total_items', 0),
+        'analyzed_items': stats.get('analyzed_items', 0),
+        'uptime_seconds': round(uptime_seconds, 1),
+    })
+
+
+# ── Batch Analyze via API ───────────────────────────────────────────
+
+@app.route('/api/analyze-batch', methods=['POST'])
+@require_admin
+def api_analyze_batch():
+    """Dispara análise em batch com rate limiting (1 chamada/minuto)."""
+    global _last_analyze_call
+
+    # Rate limit check
+    now = datetime.now(timezone.utc)
+    with _rate_limit_lock:
+        if _last_analyze_call is not None:
+            elapsed = (now - _last_analyze_call).total_seconds()
+            if elapsed < 60:
+                remaining = round(60 - elapsed)
+                return jsonify({
+                    'error': f'Rate limit: aguarde {remaining}s',
+                    'retry_after': remaining,
+                }), 429
+        _last_analyze_call = now
+
+    limit = request.args.get('limit', 50, type=int)
+    from analyze_content import analyze_batch
+    stats = analyze_batch(limit=limit)
+    return jsonify({'success': True, 'stats': stats})
+
+
+# ── Heartbeat via Telegram ──────────────────────────────────────────
+
+@app.route('/api/heartbeat', methods=['GET'])
+@require_admin
+def api_heartbeat():
+    """Envia heartbeat via Telegram com status do hub."""
+    from distribute import send_heartbeat
+    result = send_heartbeat()
+    return jsonify({'success': True, 'result': result})
+
+
+# ── Main ────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))

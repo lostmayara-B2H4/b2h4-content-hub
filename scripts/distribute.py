@@ -14,7 +14,7 @@ from typing import List, Dict
 import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
-from database import get_recent_items, get_db
+from database import get_recent_items, get_db, get_stats
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger('distribute')
@@ -134,15 +134,15 @@ def send_daily_digest(hours: int = 24) -> Dict:
     """Envia digest diário via Telegram e Email."""
     items = get_recent_items(hours=hours)
     stats = {'telegram': False, 'email': False, 'items_count': len(items)}
-    
+
     if not items:
         logger.info("Nenhum item recente para enviar")
         return stats
-    
+
     # Telegram
     text = format_telegram_digest(items)
     stats['telegram'] = send_telegram_message(text)
-    
+
     # Email (para cada subscriber ativo)
     if RESEND_API_KEY:
         with get_db() as conn:
@@ -152,12 +152,24 @@ def send_daily_digest(hours: int = 24) -> Dict:
                 subscribers = [row['email'] for row in cur.fetchall()]
             except:
                 subscribers = []
-        
+
         for email in subscribers[:50]:  # Limita a 50 por dia (free tier)
             send_email_digest(items, email)
-    
+
     logger.info(f"Digest enviado: {stats}")
     return stats
+
+
+def send_heartbeat() -> Dict:
+    """Envia heartbeat via Telegram com status do Content Hub."""
+    stats = get_stats()
+    total = stats.get('total_items', 0)
+    analyzed = stats.get('analyzed_items', 0)
+    now = datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')
+    message = f"🟢 B2H4 Hub OK — {total} items, {analyzed} analisados — {now}"
+    sent = send_telegram_message(message)
+    logger.info(f"Heartbeat enviado: {sent}")
+    return {'sent': sent, 'message': message, 'total_items': total, 'analyzed_items': analyzed}
 
 
 if __name__ == '__main__':
