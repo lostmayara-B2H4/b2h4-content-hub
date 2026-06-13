@@ -8,6 +8,7 @@ import sys
 import json
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -147,23 +148,34 @@ TAGS: [tag1, tag2, tag3]"""
 
 
 def analyze_batch(limit: int = 10) -> Dict:
-    """Analisa um batch de conteúdos não analisados."""
+    """Analisa um batch de conteúdos não analisados em paralelo."""
     items = get_unanalyzed_items(limit)
     stats = {'analyzed': 0, 'errors': 0, 'by_category': {}}
-    
+
     logger.info(f"Analisando {len(items)} items...")
-    
-    for item in items:
+
+    def _analyze_one(item):
+        """Analyze a single item. Returns (item, result, error)."""
         try:
             result = analyze_content_item(item)
-            stats['analyzed'] += 1
-            cat = item.get('category', 'general')
-            stats['by_category'][cat] = stats['by_category'].get(cat, 0) + 1
-            logger.info(f"  ✅ {item['title'][:50]}")
+            return (item, result, None)
         except Exception as e:
-            logger.error(f"Erro: {item.get('title', '')}: {e}")
-            stats['errors'] += 1
-    
+            return (item, None, e)
+
+    # Parallel analysis with max 5 concurrent LLM calls
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(_analyze_one, item): item for item in items}
+        for future in as_completed(futures):
+            item, result, error = future.result()
+            if error:
+                logger.error(f"Erro: {item.get('title', '')}: {error}")
+                stats['errors'] += 1
+            else:
+                stats['analyzed'] += 1
+                cat = item.get('category', 'general')
+                stats['by_category'][cat] = stats['by_category'].get(cat, 0) + 1
+                logger.info(f"  ✅ {item['title'][:50]}")
+
     logger.info(f"Completa: {stats['analyzed']} analisados, {stats['errors']} erros")
     return stats
 

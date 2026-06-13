@@ -5,11 +5,14 @@ import os
 import sys
 import json
 import math
+import secrets
 import threading
+import logging
 from datetime import datetime, timezone
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify
+from flask_caching import Cache
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 from database import get_db, get_stats, get_recent_items, clean_title
@@ -24,6 +27,10 @@ _last_analyze_call = None
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'b2h4-content-hub-dev')
 
+# ── Cache Configuration (P1-2) ───────────────────────────────────────
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
+cache.init_app(app)
+
 @app.template_filter('fmt_date')
 def fmt_date(dt):
     if dt is None:
@@ -34,7 +41,11 @@ def fmt_date(dt):
         return dt.strftime('%d/%m/%Y %H:%M')
     return str(dt)[:16]
 
-ADMIN_KEY = os.environ.get('ADMIN_KEY', '1234')
+# ── Admin Key (P1-4) ─────────────────────────────────────────────────
+ADMIN_KEY = os.environ.get('ADMIN_KEY')
+if not ADMIN_KEY:
+    ADMIN_KEY = secrets.token_hex(16)
+    logging.getLogger('app').warning(f"ADMIN_KEY não configurada. Gerada automaticamente: {ADMIN_KEY}")
 
 def require_admin(f):
     @wraps(f)
@@ -58,29 +69,22 @@ def index():
     query = request.args.get('q', '').strip()
     sort = request.args.get('sort', 'date')
     
-    # Busca
-    items = get_recent_items(hours=24*30, category=category, limit=1000)
+    # Busca com filtros SQL (P1-1)
+    items, total = get_recent_items(
+        hours=24*30,
+        category=category,
+        search=query if query else None,
+        sort=sort,
+        limit=per_page,
+        offset=(page - 1) * per_page
+    )
     
-    # Filtro por texto
-    if query:
-        items = [i for i in items if query.lower() in i.get('title', '').lower()]
-    
-    # Ordenação
-    if sort == 'relevance':
-        items.sort(key=lambda x: (1 if x.get('analyzed') else 0, x.get('importance', 0)), reverse=True)
-    else:
-        items.sort(key=lambda x: x.get('fetched_at', ''), reverse=True)
-    
-    # Paginação
-    total = len(items)
-    total_pages = max(1, math.ceil(total / per_page))
+    total_pages = max(1, math.ceil(total / per_page)) if total > 0 else 1
     page = max(1, min(page, total_pages))
-    start = (page - 1) * per_page
-    items_page = items[start:start + per_page]
     
     return render_template('index.html', 
                          stats=stats, 
-                         items=items_page,
+                         items=items,
                          current_page=page,
                          total_pages=total_pages,
                          total_items=total,
@@ -88,19 +92,19 @@ def index():
 
 
 @app.route('/api/stats')
+@cache.cached(timeout=60)
 def api_stats():
     return jsonify(get_stats())
 
 
 @app.route('/api/items')
+@cache.cached(timeout=300)
 def api_items():
     hours = request.args.get('hours', 24, type=int)
     category = request.args.get('category', None)
     query = request.args.get('q', '').strip()
-    items = get_recent_items(hours=hours, category=category)
-    if query:
-        items = [i for i in items if query.lower() in i.get('title', '').lower()]
-    return jsonify({'items': items, 'count': len(items)})
+    items, total = get_recent_items(hours=hours, category=category, search=query if query else None, limit=1000, offset=0)
+    return jsonify({'items': items, 'count': total})
 
 
 @app.route('/api/trigger-fetch', methods=['POST'])
@@ -143,6 +147,8 @@ def send_to_newsletter(content_id):
         return jsonify({'success': True, 'message': 'Enviado para newsletter!'})
     else:
         return jsonify({'success': False, 'message': 'Item não encontrado ou já enviado'}), 400
+
+@app.route('/api/dedup', methods=['POST'])
 @require_admin
 def dedup():
     """Remove duplicatas por URL, mantendo o mais antigo."""
@@ -201,18 +207,19 @@ def content_detail(content_id):
     try:
         with get_db() as conn:
             cur = conn.cursor()
+            cols = "id, title, url, source_name, source_type, category, summary, raw_content, published_at, fetched_at, analyzed, importance, metadata"
             if 'psycopg2' in str(type(conn)):
-                cur.execute("SELECT * FROM content_items WHERE id = %s", (content_id,))
+                cur.execute(f"SELECT {cols} FROM content_items WHERE id = %s", (content_id,))
             else:
-                cur.execute("SELECT * FROM content_items WHERE id = ?", (content_id,))
+                cur.execute(f"SELECT {cols} FROM content_items WHERE id = ?", (content_id,))
             item = cur.fetchone()
             if not item:
                 return "Not found", 404
             
             if 'psycopg2' in str(type(conn)):
-                cur.execute("SELECT * FROM content_analysis WHERE content_id = %s ORDER BY created_at DESC", (content_id,))
+                cur.execute("SELECT id, content_id, expert_role, analysis, key_insights, relevance_score, created_at FROM content_analysis WHERE content_id = %s ORDER BY created_at DESC", (content_id,))
             else:
-                cur.execute("SELECT * FROM content_analysis WHERE content_id = ? ORDER BY created_at DESC", (content_id,))
+                cur.execute("SELECT id, content_id, expert_role, analysis, key_insights, relevance_score, created_at FROM content_analysis WHERE content_id = ? ORDER BY created_at DESC", (content_id,))
             analyses = [dict(row) for row in cur.fetchall()]
         
         return render_template('detail.html', item=dict(item), analyses=analyses)

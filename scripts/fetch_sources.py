@@ -15,6 +15,7 @@ from typing import List, Dict, Optional
 from urllib.parse import urlparse
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Setup logging
 logging.basicConfig(
@@ -25,7 +26,7 @@ logger = logging.getLogger('fetch_sources')
 
 # Adiciona path do database
 sys.path.insert(0, os.path.dirname(__file__))
-from database import save_content_item, is_url_seen, get_stats
+from database import save_content_item, is_url_seen, get_stats, get_existing_urls, save_content_items_batch
 
 # ============================================================
 # FONTES DE CONTEÚDO (100% gratuitas)
@@ -419,115 +420,116 @@ def fetch_github_trending() -> List[Dict]:
 
 
 def fetch_all_sources() -> Dict:
-    """Coleta todas as fontes e salva no banco."""
-    all_items = []
+    """Coleta todas as fontes em paralelo e salva no banco em batch."""
     stats = {'total_new': 0, 'by_source': {}}
-    
-    # 0. Google News RSS (motor de busca gratuito)
+
+    # ── FASE 0: Google News RSS ───────────────────────────────────────
     logger.info("=" * 50)
     logger.info("FASE 0: Google News RSS Search Engine")
     logger.info("=" * 50)
     try:
         from search_engine import fetch_ai_news
         search_results = fetch_ai_news(num_per_query=5)
+        all_items_pre = []
         for item in search_results:
-            if not is_url_seen(item['url']):
-                result = save_content_item({
-                    'title': item['title'],
-                    'url': item['url'],
-                    'source_name': item.get('source_name', 'Google News'),
-                    'source_type': 'google_news',
-                    'category': classify_category(item['title']),
-                    'summary': '',
-                    'raw_content': '',
-                    'published_at': item.get('published_at'),
-                    'metadata': {'query': 'search_engine'}
-                })
-                if result:
-                    stats['total_new'] += 1
-                    stats['by_source']['google_news'] = stats['by_source'].get('google_news', 0) + 1
+            all_items_pre.append({
+                'title': item['title'],
+                'url': item['url'],
+                'source_name': item.get('source_name', 'Google News'),
+                'source_type': 'google_news',
+                'category': classify_category(item['title']),
+                'summary': '',
+                'raw_content': '',
+                'published_at': item.get('published_at'),
+                'metadata': {'query': 'search_engine'}
+            })
+        # Batch dedup + save
+        if all_items_pre:
+            existing = get_existing_urls([i['url'] for i in all_items_pre])
+            new_items = [i for i in all_items_pre if i['url'] not in existing]
+            if new_items:
+                save_content_items_batch(new_items)
+                stats['total_new'] += len(new_items)
+                stats['by_source']['google_news'] = len(new_items)
         logger.info(f"  Google News RSS: {stats['by_source'].get('google_news', 0)} new items")
     except Exception as e:
         logger.error(f"Error in Google News RSS: {e}")
-    
+
     time.sleep(1)
+
+    # ── FASE 1-5: Fetch paralelo de todas as fontes ───────────────────
     logger.info("=" * 50)
-    logger.info("FASE 1: RSS Feeds")
+    logger.info("FASE 1-5: Parallel Fetch (RSS, arXiv, HN, YouTube, Reddit, GitHub)")
     logger.info("=" * 50)
+
+    # Build task list: (function, args, source_label)
+    tasks = []
+
+    # RSS feeds
     for name, url in RSS_FEEDS.items():
-        items = fetch_rss_feed(name, url)
-        for item in items:
-            result = save_content_item(item)
-            if result:
-                stats['total_new'] += 1
-                stats['by_source'][name] = stats['by_source'].get(name, 0) + 1
-        time.sleep(0.5)  # Rate limit entre feeds
-    
-    # 2. arXiv
-    logger.info("=" * 50)
-    logger.info("FASE 2: arXiv")
-    logger.info("=" * 50)
-    items = fetch_arxiv()
-    for item in items:
-        result = save_content_item(item)
-        if result:
-            stats['total_new'] += 1
-            stats['by_source']['arxiv'] = stats['by_source'].get('arxiv', 0) + 1
-    time.sleep(1)
-    
-    # 3. Hacker News
-    logger.info("=" * 50)
-    logger.info("FASE 3: Hacker News")
-    logger.info("=" * 50)
-    items = fetch_hackernews()
-    for item in items:
-        result = save_content_item(item)
-        if result:
-            stats['total_new'] += 1
-            stats['by_source']['hackernews'] = stats['by_source'].get('hackernews', 0) + 1
-    time.sleep(1)
-    
-    # 4. YouTube RSS (primeiros 5 canais)
-    logger.info("=" * 50)
-    logger.info("FASE 4: YouTube RSS")
-    logger.info("=" * 50)
+        tasks.append((fetch_rss_feed, (name, url), name))
+
+    # arXiv
+    tasks.append((fetch_arxiv, (), 'arxiv'))
+
+    # Hacker News
+    tasks.append((fetch_hackernews, (), 'hackernews'))
+
+    # YouTube (first 5 channels)
     for name, channel_id in list(YOUTUBE_CHANNELS.items())[:5]:
-        items = fetch_youtube_rss(name, channel_id)
-        for item in items:
-            result = save_content_item(item)
-            if result:
-                stats['total_new'] += 1
-                stats['by_source'][f'youtube_{name}'] = stats['by_source'].get(f'youtube_{name}', 0) + 1
-        time.sleep(0.5)
-    
-    # 5. Reddit (primeiros 5 subreddits)
-    logger.info("=" * 50)
-    logger.info("FASE 5: Reddit RSS")
-    logger.info("=" * 50)
+        tasks.append((fetch_youtube_rss, (name, channel_id), f'youtube_{name}'))
+
+    # Reddit (first 5 subreddits)
     for subreddit in SUBREDDITS[:5]:
-        items = fetch_reddit_rss(subreddit)
+        tasks.append((fetch_reddit_rss, (subreddit,), f'reddit_{subreddit}'))
+
+    # GitHub Trending
+    tasks.append((fetch_github_trending, (), 'github'))
+
+    # Execute all tasks in parallel
+    all_fetched_items = {}  # source_label -> list of items
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_source = {}
+        for func, args, label in tasks:
+            future = executor.submit(func, *args)
+            future_to_source[future] = label
+
+        for future in as_completed(future_to_source):
+            label = future_to_source[future]
+            try:
+                items = future.result()
+                all_fetched_items[label] = items
+                logger.info(f"  [done] {label}: {len(items)} items fetched")
+            except Exception as e:
+                logger.error(f"  [error] {label}: {e}")
+                all_fetched_items[label] = []
+
+    # ── Batch dedup: collect ALL URLs, check once ─────────────────────
+    all_urls = []
+    source_item_map = []  # (item, source_label)
+    for label, items in all_fetched_items.items():
         for item in items:
-            result = save_content_item(item)
-            if result:
-                stats['total_new'] += 1
-                stats['by_source'][f'reddit_{subreddit}'] = stats['by_source'].get(f'reddit_{subreddit}', 0) + 1
-        time.sleep(0.5)
-    
-    # 6. GitHub Trending
-    logger.info("=" * 50)
-    logger.info("FASE 6: GitHub Trending")
-    logger.info("=" * 50)
-    items = fetch_github_trending()
-    for item in items:
-        result = save_content_item(item)
-        if result:
-            stats['total_new'] += 1
-            stats['by_source']['github'] = stats['by_source'].get('github', 0) + 1
-    
+            all_urls.append(item['url'])
+            source_item_map.append((item, label))
+
+    if all_urls:
+        existing_urls = get_existing_urls(all_urls)
+        new_item_map = [(item, label) for item, label in source_item_map if item['url'] not in existing_urls]
+
+        # ── Batch save: single transaction ─────────────────────────────
+        if new_item_map:
+            new_items = [item for item, _ in new_item_map]
+            saved_count = save_content_items_batch(new_items)
+            stats['total_new'] += saved_count
+
+            # Count per source
+            for item, label in new_item_map:
+                stats['by_source'][label] = stats['by_source'].get(label, 0) + 1
+
     logger.info("=" * 50)
     logger.info(f"COLETA COMPLETA: {stats['total_new']} novos items")
     logger.info(f"Por fonte: {json.dumps(stats['by_source'], indent=2)}")
-    
+
     return stats
 
 

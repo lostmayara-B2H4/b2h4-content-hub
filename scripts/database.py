@@ -10,6 +10,9 @@ from typing import Generator, Any, Optional, Dict, List
 from urllib.parse import urlparse, quote
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+# Global connection pool (lazy-initialized)
+_pool = None
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "content_hub.db")
 
 
@@ -20,19 +23,12 @@ def _use_postgres() -> bool:
 @contextmanager
 def get_db() -> Generator[Any, None, None]:
     if _use_postgres():
-        import psycopg2
         from psycopg2.extras import RealDictCursor
-        conn = None
-        for attempt in range(5):
-            try:
-                conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-                break
-            except psycopg2.OperationalError:
-                if attempt < 4:
-                    import time
-                    time.sleep(2)
-                else:
-                    raise
+        global _pool
+        if _pool is None:
+            from psycopg2.pool import ThreadedConnectionPool
+            _pool = ThreadedConnectionPool(minconn=2, maxconn=10, dsn=DATABASE_URL, cursor_factory=RealDictCursor)
+        conn = _pool.getconn()
         try:
             yield conn
             conn.commit()
@@ -40,7 +36,7 @@ def get_db() -> Generator[Any, None, None]:
             conn.rollback()
             raise
         finally:
-            conn.close()
+            _pool.putconn(conn)
     else:
         import sqlite3
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -131,6 +127,10 @@ def save_content_item(item: Dict) -> Optional[int]:
     # Limpa o título antes de salvar
     if item.get('title'):
         item['title'] = clean_title(item['title'])
+    # Limpa remojis do summary também
+    if item.get('summary'):
+        import re as _re
+        item['summary'] = _re.sub(r'[^\x00-\x7F\xC0-\xFF\u0100-\u024F\u1E00-\u1EFF]+', '', item['summary']).strip()
     with get_db() as conn:
         cur = conn.cursor()
         if _use_postgres():
@@ -162,9 +162,9 @@ def send_to_newsletter(content_id: int) -> bool:
         
         # Busca o item no Content Hub
         if _use_postgres():
-            cur.execute("SELECT * FROM content_items WHERE id = %s", (content_id,))
+            cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = %s", (content_id,))
         else:
-            cur.execute("SELECT * FROM content_items WHERE id = ?", (content_id,))
+            cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (content_id,))
         
         item = cur.fetchone()
         if not item:
@@ -204,9 +204,9 @@ def get_unanalyzed_items(limit: int = 10) -> List[Dict]:
     with get_db() as conn:
         cur = conn.cursor()
         if _use_postgres():
-            cur.execute("SELECT * FROM content_items WHERE analyzed = FALSE ORDER BY fetched_at DESC LIMIT %s", (limit,))
+            cur.execute("SELECT id, title, url, source_name, source_type, category, summary, raw_content, published_at, fetched_at, analyzed, importance, metadata FROM content_items WHERE analyzed = FALSE ORDER BY fetched_at DESC LIMIT %s", (limit,))
         else:
-            cur.execute("SELECT * FROM content_items WHERE analyzed = 0 ORDER BY fetched_at DESC LIMIT ?", (limit,))
+            cur.execute("SELECT id, title, url, source_name, source_type, category, summary, raw_content, published_at, fetched_at, analyzed, importance, metadata FROM content_items WHERE analyzed = 0 ORDER BY fetched_at DESC LIMIT ?", (limit,))
         return [dict(row) for row in cur.fetchall()]
 
 
@@ -237,41 +237,44 @@ def save_analysis(content_id: int, expert_role: str, analysis: str, insights: li
             """, (content_id, expert_role, analysis, json.dumps(insights), relevance))
 
 
-def get_recent_items(hours: int = 24, category: str = None, limit: int = 50) -> List[Dict]:
-    """Busca itens recentes, opcionalmente filtrados por categoria."""
+def get_recent_items(hours: int = 24, category: str = None, search: str = None, sort: str = 'date', limit: int = 50, offset: int = 0) -> tuple:
+    """Busca itens recentes com filtros SQL. Retorna (items, total)."""
+    cols = "id, title, url, source_name, source_type, category, summary, raw_content, published_at, fetched_at, analyzed, importance, metadata"
     with get_db() as conn:
         cur = conn.cursor()
-        if category:
-            if _use_postgres():
-                cur.execute("""
-                    SELECT * FROM content_items
-                    WHERE fetched_at > NOW() - INTERVAL '%s hours' AND category = %s
-                    ORDER BY importance DESC, fetched_at DESC
-                    LIMIT %s
-                """, (hours, category, limit))
-            else:
-                cur.execute("""
-                    SELECT * FROM content_items
-                    WHERE fetched_at > datetime('now', ?) AND category = ?
-                    ORDER BY importance DESC, fetched_at DESC
-                    LIMIT ?
-                """, (f'-{hours} hours', category, limit))
+        # Build WHERE clause
+        conditions = []
+        params = []
+        if _use_postgres():
+            conditions.append("fetched_at > NOW() - INTERVAL '%s hours'")
+            params.append(hours)
         else:
-            if _use_postgres():
-                cur.execute("""
-                    SELECT * FROM content_items
-                    WHERE fetched_at > NOW() - INTERVAL '%s hours'
-                    ORDER BY importance DESC, fetched_at DESC
-                    LIMIT %s
-                """, (hours, limit))
-            else:
-                cur.execute("""
-                    SELECT * FROM content_items
-                    WHERE fetched_at > datetime('now', ?)
-                    ORDER BY importance DESC, fetched_at DESC
-                    LIMIT ?
-                """, (f'-{hours} hours', limit))
-        return [dict(row) for row in cur.fetchall()]
+            conditions.append("fetched_at > datetime('now', ?)")
+            params.append(f'-{hours} hours')
+        if category:
+            conditions.append("category = %s" if _use_postgres() else "category = ?")
+            params.append(category)
+        if search:
+            conditions.append("title ILIKE %s" if _use_postgres() else "title LIKE ?")
+            params.append(f'%{search}%')
+        where_clause = " AND ".join(conditions)
+        # Count total
+        count_sql = f"SELECT COUNT(*) as cnt FROM content_items WHERE {where_clause}"
+        cur.execute(count_sql, params)
+        total = cur.fetchone()['cnt']
+        # ORDER BY
+        if sort == 'relevance':
+            order_clause = "analyzed ASC, importance DESC, fetched_at DESC"
+        else:
+            order_clause = "importance DESC, fetched_at DESC"
+        # Main query with LIMIT/OFFIX
+        if _use_postgres():
+            query_sql = f"SELECT {cols} FROM content_items WHERE {where_clause} ORDER BY {order_clause} LIMIT %s OFFSET %s"
+        else:
+            query_sql = f"SELECT {cols} FROM content_items WHERE {where_clause} ORDER BY {order_clause} LIMIT ? OFFSET ?"
+        cur.execute(query_sql, params + [limit, offset])
+        items = [dict(row) for row in cur.fetchall()]
+        return items, total
 
 
 def is_url_seen(url: str) -> bool:
@@ -283,6 +286,57 @@ def is_url_seen(url: str) -> bool:
         else:
             cur.execute("SELECT 1 FROM content_items WHERE url = ?", (url,))
         return cur.fetchone() is not None
+
+
+def get_existing_urls(urls: list) -> set:
+    """Busca todas as URLs de uma vez. Retorna set de URLs já existentes."""
+    if not urls:
+        return set()
+    with get_db() as conn:
+        cur = conn.cursor()
+        if _use_postgres():
+            cur.execute("SELECT url FROM content_items WHERE url = ANY(%s)", (urls,))
+        else:
+            placeholders = ','.join(['?' for _ in urls])
+            cur.execute(f"SELECT url FROM content_items WHERE url IN ({placeholders})", urls)
+        return {row['url'] for row in cur.fetchall()}
+
+
+def save_content_items_batch(items: list) -> int:
+    """Salva múltiplos items em uma única transação. Retorna count de inseridos."""
+    if not items:
+        return 0
+    with get_db() as conn:
+        cur = conn.cursor()
+        if _use_postgres():
+            from psycopg2.extras import execute_values
+            values = [
+                (i['title'], i['url'], i['source_name'], i['source_type'],
+                 i.get('category'), i.get('summary'), i.get('raw_content'),
+                 i.get('published_at'), str(i.get('metadata', {})))
+                for i in items
+            ]
+            execute_values(cur, """
+                INSERT INTO content_items (title, url, source_name, source_type, category, summary, raw_content, published_at, metadata)
+                VALUES %s
+                ON CONFLICT (url) DO NOTHING
+            """, values)
+        else:
+            import sqlite3
+            count = 0
+            for i in items:
+                try:
+                    cur.execute("""
+                        INSERT INTO content_items (title, url, source_name, source_type, category, summary, raw_content, published_at, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (i['title'], i['url'], i['source_name'], i['source_type'],
+                          i.get('category'), i.get('summary'), i.get('raw_content'),
+                          i.get('published_at'), str(i.get('metadata', {}))))
+                    count += 1
+                except Exception:
+                    pass
+            return count
+        return len(items)
 
 
 def get_stats() -> Dict:
