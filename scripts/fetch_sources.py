@@ -423,7 +423,34 @@ def fetch_all_sources() -> Dict:
     all_items = []
     stats = {'total_new': 0, 'by_source': {}}
     
-    # 1. RSS Feeds
+    # 0. Google News RSS (motor de busca gratuito)
+    logger.info("=" * 50)
+    logger.info("FASE 0: Google News RSS Search Engine")
+    logger.info("=" * 50)
+    try:
+        from search_engine import fetch_ai_news
+        search_results = fetch_ai_news(num_per_query=5)
+        for item in search_results:
+            if not is_url_seen(item['url']):
+                result = save_content_item({
+                    'title': item['title'],
+                    'url': item['url'],
+                    'source_name': item.get('source_name', 'Google News'),
+                    'source_type': 'google_news',
+                    'category': classify_category(item['title']),
+                    'summary': '',
+                    'raw_content': '',
+                    'published_at': item.get('published_at'),
+                    'metadata': {'query': 'search_engine'}
+                })
+                if result:
+                    stats['total_new'] += 1
+                    stats['by_source']['google_news'] = stats['by_source'].get('google_news', 0) + 1
+        logger.info(f"  Google News RSS: {stats['by_source'].get('google_news', 0)} new items")
+    except Exception as e:
+        logger.error(f"Error in Google News RSS: {e}")
+    
+    time.sleep(1)
     logger.info("=" * 50)
     logger.info("FASE 1: RSS Feeds")
     logger.info("=" * 50)
