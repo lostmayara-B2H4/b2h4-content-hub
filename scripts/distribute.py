@@ -132,7 +132,8 @@ def send_email_digest(items: List[Dict], to_email: str) -> bool:
 
 def send_daily_digest(hours: int = 24) -> Dict:
     """Envia digest diário via Telegram e Email."""
-    items = get_recent_items(hours=hours)
+    result = get_recent_items(hours=hours)
+    items = result[0] if isinstance(result, tuple) else result
     stats = {'telegram': False, 'email': False, 'items_count': len(items)}
 
     if not items:
