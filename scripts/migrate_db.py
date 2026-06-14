@@ -4,7 +4,7 @@ import os, json, sqlite3, psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Path correto do SQLite (apos refactor)
-DB_PATH = '/Users/boris/b2h4-content-hub/data/content_hub.db'
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'content_hub.db')
 
 conn = sqlite3.connect(DB_PATH)
 conn.row_factory = sqlite3.Row

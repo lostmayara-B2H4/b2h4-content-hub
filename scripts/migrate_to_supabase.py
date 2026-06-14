@@ -10,8 +10,8 @@ except ImportError:
 
 # Puxar do SQLite local
 db_paths = [
-    '/Users/boris/b2h4-content-hub/scripts/data/content_hub.db',
-    os.path.expanduser('~/b2h4-content-hub/scripts/data/content_hub.db'),
+    os.path.join(os.path.dirname(__file__), 'data', 'content_hub.db'),
+    os.path.join(os.path.dirname(__file__), '..', 'data', 'content_hub.db'),
 ]
 db_path = next((p for p in db_paths if os.path.exists(p)), None)
 if not db_path:

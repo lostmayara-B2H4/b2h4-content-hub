@@ -70,7 +70,7 @@ def analyze_with_openrouter(prompt: str, role_prompt: str) -> Dict:
             headers={
                 'Authorization': f'Bearer {OPENROUTER_API_KEY}',
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://b2h4-content-hub.onrender.com',
+                'HTTP-Referer': os.environ.get("BASE_URL", ""),
             },
             json={
                 'model': OPENROUTER_MODEL,
