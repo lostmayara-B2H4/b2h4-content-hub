@@ -305,7 +305,23 @@ def api_search():
     save = request.args.get('save', 'true').lower() == 'true'
     
     # Busca nos conectores disponíveis
-    from search_engines import search_all, get_available_connectors
+    try:
+        from search_engines import search_all, get_available_connectors
+        _search_available = True
+    except ImportError as e:
+        import logging
+        logging.warning(f"search_engines não disponível: {e}")
+        _search_available = False
+    
+    if not _search_available:
+        return jsonify({
+            'query': query,
+            'results': [],
+            'saved': 0,
+            'connectors': [],
+            'total': 0,
+            'message': 'Search engines não disponível neste ambiente.'
+        })
     
     connectors = get_available_connectors()
     connector_names = [c.name for c in connectors]
