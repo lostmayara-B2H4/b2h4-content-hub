@@ -419,8 +419,13 @@ def fetch_github_trending() -> List[Dict]:
     return items
 
 
-def fetch_all_sources() -> Dict:
-    """Coleta todas as fontes em paralelo e salva no banco em batch."""
+def fetch_all_sources(query: str = None, topic: str = "general") -> Dict:
+    """Coleta todas as fontes em paralelo e salva no banco em batch.
+    
+    Args:
+        query: Termo de busca opcional (ativa Tavily + SearchAPI)
+        topic: 'general' ou 'news' (para Tavily)
+    """
     stats = {'total_new': 0, 'by_source': {}}
 
     # ── FASE 0: Google News RSS ───────────────────────────────────────
@@ -454,6 +459,64 @@ def fetch_all_sources() -> Dict:
         logger.info(f"  Google News RSS: {stats['by_source'].get('google_news', 0)} new items")
     except Exception as e:
         logger.error(f"Error in Google News RSS: {e}")
+
+    time.sleep(1)
+
+    # ── FASE 0.5: Search Engines (Tavily + SearchAPI) ───────────────────
+    logger.info("=" * 50)
+    logger.info("FASE 0.5: Search Engines (Tavily + SearchAPI)")
+    logger.info("=" * 50)
+    try:
+        from search_engines import search_all, get_available_connectors
+        
+        connectors = get_available_connectors()
+        if connectors:
+            logger.info(f"Conectores ativos: {[c.name for c in connectors]}")
+            
+            # Usa query se fornecida, senão busca temas padrão
+            search_queries = [query] if query else [
+                "AI agents 2026",
+                "artificial intelligence news",
+                "machine learning latest",
+            ]
+            
+            for sq in search_queries:
+                if not sq:
+                    continue
+                logger.info(f"Search engines: '{sq}' (topic={topic})")
+                search_results = search_all(sq, max_results=5, topic=topic)
+                
+                if search_results:
+                    # Converte para formato do Content Hub
+                    hub_items = []
+                    for r in search_results:
+                        hub_items.append({
+                            'title': r['title'],
+                            'url': r['url'],
+                            'source_name': r.get('source_name', 'search_engine'),
+                            'source_type': 'search_engine',
+                            'category': 'general',  # Será reclassificado depois
+                            'summary': r.get('summary', ''),
+                            'raw_content': '',
+                            'published_at': r.get('published'),
+                            'metadata': {'query': sq, 'source': r.get('source_name', 'search')}
+                        })
+                    
+                    # Dedup + save
+                    if hub_items:
+                        existing = get_existing_urls([i['url'] for i in hub_items])
+                        new_items = [i for i in hub_items if i['url'] not in existing]
+                        if new_items:
+                            save_content_items_batch(new_items)
+                            stats['total_new'] += len(new_items)
+                            stats['by_source']['search_engines'] = stats['by_source'].get('search_engines', 0) + len(new_items)
+                            logger.info(f"Search engines ({sq}): {len(new_items)} novos items")
+                else:
+                    logger.info(f"Search engines ({sq}): 0 resultados")
+        else:
+            logger.info("Search engines: nenhum conector disponível (configure TAVILY_API_KEY ou SEARCHAPI_API_KEY)")
+    except Exception as e:
+        logger.error(f"Erro nos search engines: {e}")
 
     time.sleep(1)
 
