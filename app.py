@@ -15,6 +15,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_caching import Cache
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
+sys.path.insert(0, os.path.dirname(__file__))
 from database import get_db, get_stats, get_recent_items, clean_title
 
 # App start time for uptime tracking
