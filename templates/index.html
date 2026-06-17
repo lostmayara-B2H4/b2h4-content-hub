@@ -31,10 +31,28 @@
         .search-box input { width: 100%; padding: 10px 14px 10px 36px; background: #111; border: 1px solid #222; border-radius: 8px; color: #e0e0e0; font-size: 14px; outline: none; }
         .search-box input:focus { border-color: #6366f1; }
         .search-box::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; }
+        
+        .search-actions { display: flex; gap: 8px; }
+        .btn { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #222; background: #111; color: #888; transition: all 0.2s; white-space: nowrap; }
+        .btn:hover { background: #1a1a1a; border-color: #6366f1; color: #fff; }
+        .btn-primary { background: #6366f1; border-color: #6366f1; color: #fff; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .filters { display: flex; gap: 8px; flex-wrap: wrap; }
         .filters a { padding: 8px 14px; background: #111; border: 1px solid #222; border-radius: 8px; color: #888; text-decoration: none; font-size: 13px; transition: all 0.2s; }
         .filters a:hover, .filters a.active { background: #6366f1; color: #fff; border-color: #6366f1; }
         .sort-select { padding: 8px 12px; background: #111; border: 1px solid #222; border-radius: 8px; color: #888; font-size: 13px; outline: none; cursor: pointer; }
+        
+        /* Search status */
+        .search-status { display: none; padding: 10px 14px; background: #111; border: 1px solid #222; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #888; }
+        .search-status.active { display: flex; align-items: center; gap: 10px; }
+        .search-status .spinner { width: 14px; height: 14px; border: 2px solid #333; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .search-status .badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+        .badge-tavily { background: #1e3a5f; color: #60a5fa; }
+        .badge-searchapi { background: #1f3d1f; color: #4ade80; }
+        .badge-saved { background: #3d2f1f; color: #fbbf24; }
         
         /* Items */
         .items { display: flex; flex-direction: column; gap: 8px; }
@@ -54,6 +72,10 @@
         .cat-tools { background: #1f2d3d; color: #38bdf8; }
         .cat-general { background: #222; color: #888; }
         
+        /* Source badges */
+        .source-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; background: #1a1a2e; color: #6366f1; border: 1px solid #2a2a4e; }
+        .source-web { background: #1a2e1a; color: #4ade80; border-color: #2a4e2a; }
+        
         /* Pagination */
         .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 30px; }
         .pagination a, .pagination span { padding: 8px 14px; background: #111; border: 1px solid #222; border-radius: 8px; color: #888; text-decoration: none; font-size: 13px; }
@@ -63,13 +85,21 @@
         
         .empty { text-align: center; padding: 60px; color: #444; }
         .results-info { font-size: 13px; color: #555; margin-bottom: 15px; }
+        
+        /* Connectors info */
+        .connectors-info { font-size: 11px; color: #444; margin-left: auto; }
+        .connectors-info .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+        .dot-active { background: #4ade80; }
+        .dot-inactive { background: #444; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>📰 B2H4 <span>Content Hub</span></h1>
-            <span style="color: #444; font-size: 14px;">AI-powered content intelligence</span>
+            <div class="connectors-info" id="connectorsInfo">
+                <span class="dot dot-inactive"></span> Search engines offline
+            </div>
         </header>
 
         <!-- Stats -->
@@ -110,8 +140,22 @@
         <!-- Search & Filters -->
         <div class="controls">
             <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Buscar conteúdo..." value="{{ request.args.get('q', '') }}" onkeydown="if(event.key==='Enter')doSearch()">
+                <input type="text" id="searchInput" placeholder="Buscar conteúdo... (Enter = busca local, Ctrl+Enter = busca na web)" value="{{ request.args.get('q', '') }}" onkeydown="handleSearchKey(event)">
             </div>
+            <div class="search-actions">
+                <button class="btn" id="btnSearchLocal" onclick="doSearchLocal()">🔍 Buscar</button>
+                <button class="btn btn-primary" id="btnSearchWeb" onclick="doSearchWeb()" disabled>🌐 Buscar na Web</button>
+            </div>
+        </div>
+        
+        <!-- Search status -->
+        <div class="search-status" id="searchStatus">
+            <div class="spinner"></div>
+            <span id="searchStatusText">Buscando...</span>
+            <span id="searchStatusBadges"></span>
+        </div>
+
+        <div class="controls" style="margin-top: -10px;">
             <div class="filters">
                 <a href="/?q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if not request.args.get('category') else '' }}">Todos</a>
                 <a href="/?category=engineering&q={{ request.args.get('q', '') }}&sort={{ request.args.get('sort', 'date') }}" class="{{ 'active' if request.args.get('category') == 'engineering' else '' }}">⚙️ Engineering</a>
@@ -136,7 +180,7 @@
         </div>
 
         <!-- Items -->
-        <div class="items">
+        <div class="items" id="itemsList">
             {% if items %}
                 {% for item in items %}
                 <a href="/content/{{ item.id }}" class="item">
@@ -193,13 +237,98 @@
     </div>
 
     <script>
-        function doSearch() {
+        // Check search engine availability on load
+        fetch('/api/search?q=test&save=false&max_results=1')
+            .then(r => r.json())
+            .then(data => {
+                const info = document.getElementById('connectorsInfo');
+                const btn = document.getElementById('btnSearchWeb');
+                if (data.connectors && data.connectors.length > 0) {
+                    const names = data.connectors.join(', ');
+                    info.innerHTML = `<span class="dot dot-active"></span> Search: ${names}`;
+                    btn.disabled = false;
+                } else {
+                    info.innerHTML = `<span class="dot dot-inactive"></span> Search engines offline (configure API keys)`;
+                }
+            })
+            .catch(() => {
+                document.getElementById('connectorsInfo').innerHTML = 
+                    `<span class="dot dot-inactive"></span> Search engines offline`;
+            });
+
+        function handleSearchKey(event) {
+            if (event.key === 'Enter') {
+                if (event.ctrlKey || event.metaKey) {
+                    doSearchWeb();
+                } else {
+                    doSearchLocal();
+                }
+            }
+        }
+
+        function doSearchLocal() {
             const q = document.getElementById('searchInput').value;
             const params = new URLSearchParams(window.location.search);
             if (q) params.set('q', q); else params.delete('q');
             params.delete('page');
             window.location = '?' + params.toString();
         }
+
+        function doSearchWeb() {
+            const q = document.getElementById('searchInput').value.trim();
+            if (!q) return;
+            
+            const status = document.getElementById('searchStatus');
+            const statusText = document.getElementById('searchStatusText');
+            const statusBadges = document.getElementById('searchStatusBadges');
+            const btn = document.getElementById('btnSearchWeb');
+            
+            status.classList.add('active');
+            statusText.textContent = `Buscando "${q}" na web...`;
+            statusBadges.innerHTML = '';
+            btn.disabled = true;
+            
+            const topic = new URLSearchParams(window.location.search).get('topic') || 'general';
+            
+            fetch(`/api/search?q=${encodeURIComponent(q)}&topic=${topic}&max_results=5&save=true`)
+                .then(r => r.json())
+                .then(data => {
+                    status.classList.remove('active');
+                    btn.disabled = false;
+                    
+                    if (data.error) {
+                        alert('Erro: ' + data.error);
+                        return;
+                    }
+                    
+                    // Show results count
+                    let badges = '';
+                    if (data.connectors && data.connectors.length > 0) {
+                        data.connectors.forEach(c => {
+                            badges += `<span class="badge badge-${c}">${c}</span> `;
+                        });
+                    }
+                    if (data.saved > 0) {
+                        badges += `<span class="badge badge-saved">+${data.saved} salvos</span>`;
+                    }
+                    
+                    if (data.total > 0) {
+                        // Redirect to show results from DB
+                        const params = new URLSearchParams(window.location.search);
+                        params.set('q', q);
+                        params.delete('page');
+                        window.location = '?' + params.toString();
+                    } else {
+                        alert('Nenhum resultado encontrado na web. Configure as API keys (TAVILY_API_KEY ou SEARCHAPI_API_KEY).');
+                    }
+                })
+                .catch(err => {
+                    status.classList.remove('active');
+                    btn.disabled = false;
+                    alert('Erro na busca: ' + err.message);
+                });
+        }
+
         function doSort() {
             const sort = document.getElementById('sortSelect').value;
             const params = new URLSearchParams(window.location.search);

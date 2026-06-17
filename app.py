@@ -282,6 +282,78 @@ def api_heartbeat():
     return jsonify({'success': True, 'result': result})
 
 
+@app.route('/api/search', methods=['GET'])
+def api_search():
+    """Busca externa via search engines (Tavily + SearchAPI).
+    
+    Query params:
+        q: termo de busca (obrigatório)
+        topic: 'general' ou 'news' (default: 'general')
+        max_results: máximo por conector (default: 5)
+        save: 'true' para salvar no banco (default: true)
+    
+    Retorna:
+        JSON com resultados unificados + status dos conectores
+    """
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'error': 'Parâmetro q é obrigatório'}), 400
+    
+    topic = request.args.get('topic', 'general')
+    max_results = request.args.get('max_results', 5, type=int)
+    save = request.args.get('save', 'true').lower() == 'true'
+    
+    # Busca nos conectores disponíveis
+    from search_engines import search_all, get_available_connectors
+    
+    connectors = get_available_connectors()
+    connector_names = [c.name for c in connectors]
+    
+    if not connectors:
+        return jsonify({
+            'query': query,
+            'results': [],
+            'saved': 0,
+            'connectors': [],
+            'total': 0,
+            'message': 'Nenhum conector de busca disponível. Configure TAVILY_API_KEY ou SEARCHAPI_API_KEY.'
+        })
+    
+    search_results = search_all(query, max_results=max_results, topic=topic)
+    
+    saved_count = 0
+    if save and search_results:
+        from database import save_content_items_batch, get_existing_urls
+        
+        hub_items = []
+        for r in search_results:
+            hub_items.append({
+                'title': r['title'],
+                'url': r['url'],
+                'source_name': r.get('source_name', 'search_engine'),
+                'source_type': 'search_engine',
+                'category': 'general',
+                'summary': r.get('summary', ''),
+                'raw_content': '',
+                'published_at': r.get('published'),
+                'metadata': {'query': query, 'source': r.get('source_name', 'search')}
+            })
+        
+        if hub_items:
+            existing = get_existing_urls([i['url'] for i in hub_items])
+            new_items = [i for i in hub_items if i['url'] not in existing]
+            if new_items:
+                saved_count = save_content_items_batch(new_items)
+    
+    return jsonify({
+        'query': query,
+        'results': search_results,
+        'saved': saved_count,
+        'connectors': connector_names,
+        'total': len(search_results) if search_results else 0
+    })
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
