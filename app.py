@@ -306,26 +306,28 @@ def api_search():
     
     # Busca nos conectores disponíveis
     _search_error = None
+    _search_available = False
+    connectors = []
     try:
-        from search_engines import search_all, get_available_connectors
+        from search_engines.registry import get_registry
+        registry = get_registry()
+        connectors = registry.available()
         _search_available = True
     except Exception as _e:
         import logging
         _search_error = f"{type(_e).__name__}: {_e}"
-        logging.error(f"search_engines import error: {_search_error}")
-        _search_available = False
+        logging.error(f"search_engines error: {_search_error}")
     
-    if not _search_available:
+    if not _search_available or not connectors:
         return jsonify({
             'query': query,
             'results': [],
             'saved': 0,
-            'connectors': [],
+            'connectors': [c.name for c in connectors],
             'total': 0,
-            'message': f'Search engines não disponível: {_search_error or "erro desconhecido"}'
+            'message': f'Search engines não disponível: {_search_error or "sem conectores ativos"}'
         })
     
-    connectors = get_available_connectors()
     connector_names = [c.name for c in connectors]
     
     if not connectors:
@@ -338,7 +340,18 @@ def api_search():
             'message': 'Nenhum conector de busca disponível. Configure TAVILY_API_KEY ou SEARCHAPI_API_KEY.'
         })
     
-    search_results = search_all(query, max_results=max_results, topic=topic)
+    search_results_raw = registry.search_all(query, limit=max_results)
+    search_results = [
+        {
+            "title": r.title,
+            "url": r.url,
+            "snippet": r.snippet,
+            "source_name": r.source,
+            "published": r.published,
+            "score": r.score,
+        }
+        for r in search_results_raw
+    ]
     
     saved_count = 0
     if save and search_results:
