@@ -367,7 +367,7 @@ def _api_search_impl():
                 'category': 'general',
                 'summary': r.get('summary', ''),
                 'raw_content': '',
-                'published_at': r.get('published'),
+                'published_at': r.get('published') or None,
                 'metadata': {'query': query, 'source': r.get('source_name', 'search')}
             })
         
