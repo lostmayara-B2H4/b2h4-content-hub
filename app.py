@@ -368,7 +368,7 @@ def _api_search_impl():
                 'summary': r.get('summary', ''),
                 'raw_content': '',
                 'published_at': r.get('published') or None,
-                'metadata': {'query': query, 'source': r.get('source_name', 'search')}
+                'metadata': json.dumps({'query': query, 'source': r.get('source_name', 'search')}),
             })
         
         if hub_items:
