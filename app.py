@@ -305,12 +305,14 @@ def api_search():
     save = request.args.get('save', 'true').lower() == 'true'
     
     # Busca nos conectores disponíveis
+    _search_error = None
     try:
         from search_engines import search_all, get_available_connectors
         _search_available = True
-    except ImportError as e:
+    except Exception as _e:
         import logging
-        logging.warning(f"search_engines não disponível: {e}")
+        _search_error = f"{type(_e).__name__}: {_e}"
+        logging.error(f"search_engines import error: {_search_error}")
         _search_available = False
     
     if not _search_available:
@@ -320,7 +322,7 @@ def api_search():
             'saved': 0,
             'connectors': [],
             'total': 0,
-            'message': 'Search engines não disponível neste ambiente.'
+            'message': f'Search engines não disponível: {_search_error or "erro desconhecido"}'
         })
     
     connectors = get_available_connectors()
