@@ -285,17 +285,17 @@ def api_heartbeat():
 
 @app.route('/api/search', methods=['GET'])
 def api_search():
-    """Busca externa via search engines (Tavily + SearchAPI).
-    
-    Query params:
-        q: termo de busca (obrigatório)
-        topic: 'general' ou 'news' (default: 'general')
-        max_results: máximo por conector (default: 5)
-        save: 'true' para salvar no banco (default: true)
-    
-    Retorna:
-        JSON com resultados unificados + status dos conectores
-    """
+    """Busca externa via search engines (Tavily + SearchAPI)."""
+    try:
+        return _api_search_impl()
+    except Exception as e:
+        import logging, traceback
+        logging.error(f"api_search error: {e}\n{traceback.format_exc()}")
+        return jsonify({'error': str(e), 'results': [], 'connectors': [], 'total': 0}), 500
+
+
+def _api_search_impl():
+    """Implementação da busca externa."""
     query = request.args.get('q', '').strip()
     if not query:
         return jsonify({'error': 'Parâmetro q é obrigatório'}), 400
