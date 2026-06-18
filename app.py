@@ -157,59 +157,72 @@ def analyze_and_send():
     
     Body opcional: {"content_ids": [1, 2, 3]} — se não fornecido, analisa todos não-analisados
     """
-    from database import get_all_content_ids
+    import traceback as _tb
+    from database import get_all_content_ids, _use_postgres, get_db
     from analyze_content import analyze_content_item
     from database import send_to_newsletter
     
-    data = request.get_json(silent=True) or {}
-    content_ids = data.get('content_ids', None)
-    
-    if not content_ids:
-        # Busca todos os não-analizados
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE analyzed = FALSE OR analyzed = 0 ORDER BY fetched_at DESC LIMIT 50")
-            items = [dict(r) for r in cur.fetchall()]
-            content_ids = [i['id'] for i in items]
-    
-    import traceback as _tb
-    analyzed = 0
-    sent = 0
-    errors = []
-    
-    for cid in content_ids[:50]:  # Max 50 por chamada
-        try:
-            # Busca item
+    try:
+        data = request.get_json(silent=True) or {}
+        content_ids = data.get('content_ids', None)
+        
+        if not content_ids:
+            # Busca todos os não-analizados
             with get_db() as conn:
                 cur = conn.cursor()
                 if _use_postgres():
-                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = %s", (cid,))
+                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE analyzed = FALSE ORDER BY fetched_at DESC LIMIT 50")
                 else:
-                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (cid,))
-                item = cur.fetchone()
-            
-            if not item:
-                continue
-            item = dict(item)
-            
-            # Analisa se não foi analisado
-            if not item.get('analyzed'):
-                analyze_content_item(item)
-                analyzed += 1
-            
-            # Envia para newsletter
-            if send_to_newsletter(cid):
-                sent += 1
+                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE analyzed = 0 ORDER BY fetched_at DESC LIMIT 50")
+                items = [dict(r) for r in cur.fetchall()]
+                content_ids = [i['id'] for i in items]
+        
+        if not content_ids:
+            return jsonify({'success': True, 'analyzed': 0, 'sent': 0, 'message': 'Nenhum item para analisar'})
+        
+        analyzed = 0
+        sent = 0
+        errors = []
+        
+        for cid in content_ids[:50]:  # Max 50 por chamada
+            try:
+                # Busca item
+                with get_db() as conn:
+                    cur = conn.cursor()
+                    if _use_postgres():
+                        cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = %s", (cid,))
+                    else:
+                        cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (cid,))
+                    item = cur.fetchone()
                 
-        except Exception as e:
-            errors.append({'id': cid, 'error': str(e), 'trace': _tb.format_exc()[-500:]})
-    
-    return jsonify({
-        'success': True,
-        'analyzed': analyzed,
-        'sent': sent,
-        'errors': errors
-    })
+                if not item:
+                    continue
+                item = dict(item)
+                
+                # Analisa se não foi analisado
+                if not item.get('analyzed'):
+                    analyze_content_item(item)
+                    analyzed += 1
+                
+                # Envia para newsletter
+                if send_to_newsletter(cid):
+                    sent += 1
+                    
+            except Exception as e:
+                errors.append({'id': cid, 'error': str(e), 'trace': _tb.format_exc()[-500:]})
+        
+        return jsonify({
+            'success': True,
+            'analyzed': analyzed,
+            'sent': sent,
+            'errors': errors
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'trace': _tb.format_exc()[-1000:]
+        }), 500
 
 @app.route('/api/dedup', methods=['POST'])
 @require_admin
