@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger('batch_analyze_rest')
 
 # Config
-SUPABASE_URL = "https://avguypdjdpqeswmkpkqd.supabase.co"
-SUPABASE_KEY = "sb_publishable_IF33VUqRXdNc_INELZaxkg_3mCI2lxi"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", os.environ.get("SUPABASE_KEY", ""))
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', '')
 OPENROUTER_MODEL = os.environ.get('OPENROUTER_MODEL', 'qwen/qwen3-coder:free')
 AGENTS_DIR = os.path.expanduser("~/.hermes/skills/agency-agents-zh")

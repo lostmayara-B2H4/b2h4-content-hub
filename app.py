@@ -26,7 +26,7 @@ _rate_limit_lock = threading.Lock()
 _last_analyze_call = None
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'b2h4-content-hub-dev')
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # ── Cache Configuration (P1-2) ───────────────────────────────────────
 cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
