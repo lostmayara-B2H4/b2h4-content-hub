@@ -28,6 +28,8 @@ logger = logging.getLogger('fetch_sources')
 sys.path.insert(0, os.path.dirname(__file__))
 from database import save_content_item, is_url_seen, get_stats, get_existing_urls, save_content_items_batch
 
+MAX_PER_SOURCE = 5  # Máximo de conteúdos por fonte de dados
+
 # ============================================================
 # FONTES DE CONTEÚDO (100% gratuitas)
 # ============================================================
@@ -145,7 +147,7 @@ def fetch_rss_feed(name: str, url: str) -> List[Dict]:
             logger.warning(f"Feed vazio ou erro: {name}")
             return items
         
-        for entry in feed.entries[:5]:  # Top 5 mais relevantes por feed RSS
+        for entry in feed.entries[:MAX_PER_SOURCE]:  # Top 5 mais relevantes por feed RSS
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -234,7 +236,7 @@ def fetch_youtube_rss(channel_name: str, channel_id: str) -> List[Dict]:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
         feed = feedparser.parse(url)
         
-        for entry in feed.entries[:5]:  # Top 5 mais relevantes por canal
+        for entry in feed.entries[:MAX_PER_SOURCE]:  # Top 5 mais relevantes por canal
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -272,7 +274,7 @@ def fetch_hackernews() -> List[Dict]:
         logger.info("Fetching Hacker News...")
         # Busca top stories
         resp = requests.get('https://hacker-news.firebaseio.com/v0/topstories.json', timeout=10)
-        story_ids = resp.json()[:5]  # Top 5 mais relevantes do HN
+        story_ids = resp.json()[:MAX_PER_SOURCE]  # Top 5 mais relevantes do HN
         
         for story_id in story_ids:
             try:
@@ -326,7 +328,7 @@ def fetch_reddit_rss(subreddit: str) -> List[Dict]:
         url = f"https://old.reddit.com/r/{subreddit}/.rss"
         feed = feedparser.parse(url)
         
-        for entry in feed.entries[:5]:  # Top 5 mais relevantes por subreddit
+        for entry in feed.entries[:MAX_PER_SOURCE]:  # Top 5 mais relevantes por subreddit
             url_entry = entry.get('link', '')
             if not url_entry or is_url_seen(url_entry):
                 continue
@@ -368,7 +370,7 @@ def fetch_github_trending() -> List[Dict]:
         logger.info("Fetching GitHub Trending...")
         # Usa a API pública do GitHub (rate limit: 60 req/h sem auth)
         resp = requests.get(
-            'https://api.github.com/search/repositories?q=created:>2026-06-01&sort=stars&order=desc&per_page=15',
+            'https://api.github.com/search/repositories?q=created:>2026-06-01&sort=stars&order=desc&per_page=MAX_PER_SOURCE',
             timeout=10,
             headers={'Accept': 'application/vnd.github.v3+json'}
         )
@@ -378,7 +380,7 @@ def fetch_github_trending() -> List[Dict]:
             return items
         
         data = resp.json()
-        for repo in data.get('items', [])[:5]:  # Top 5 mais relevantes do GitHub
+        for repo in data.get('items', [])[:MAX_PER_SOURCE]:  # Top 5 mais relevantes do GitHub
             repo_name = repo.get('full_name', '') or repo.get('name', '')
             if not repo_name:
                 continue
