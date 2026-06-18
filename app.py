@@ -224,6 +224,20 @@ def analyze_and_send():
             'trace': _tb.format_exc()[-1000:]
         }), 500
 
+@app.route('/api/reset-analyzed', methods=['POST'])
+@require_admin
+def reset_analyzed():
+    """Reseta todos os itens para não-analisados (para re-análise)."""
+    from database import get_db, _use_postgres
+    with get_db() as conn:
+        cur = conn.cursor()
+        if _use_postgres():
+            cur.execute("UPDATE content_items SET analyzed = FALSE")
+        else:
+            cur.execute("UPDATE content_items SET analyzed = 0")
+        conn.commit()
+    return jsonify({'success': True, 'message': 'Todos os itens resetados para não-analisados'})
+
 @app.route('/api/test-send/<int:content_id>', methods=['POST'])
 @require_admin
 def test_send(content_id):
