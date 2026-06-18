@@ -224,6 +224,56 @@ def analyze_and_send():
             'trace': _tb.format_exc()[-1000:]
         }), 500
 
+@app.route('/api/debug-analysis/<int:content_id>', methods=['GET'])
+@require_admin
+def debug_analysis(content_id):
+    """Debug: mostra o analysis de um item específico."""
+    from database import get_db, _use_postgres
+    import json as _json
+    
+    with get_db() as conn:
+        cur = conn.cursor()
+        
+        # Busca o item
+        if _use_postgres():
+            cur.execute("SELECT id, title, summary, analyzed FROM content_items WHERE id = %s", (content_id,))
+        else:
+            cur.execute("SELECT id, title, summary, analyzed FROM content_items WHERE id = ?", (content_id,))
+        item = cur.fetchone()
+        
+        if not item:
+            return jsonify({'error': 'Item not found'})
+        
+        # Busca a análise
+        if _use_postgres():
+            cur.execute("SELECT id, content_id, analysis, relevance FROM content_analysis WHERE content_id = %s ORDER BY id DESC LIMIT 1", (content_id,))
+        else:
+            cur.execute("SELECT id, content_id, analysis, relevance FROM content_analysis WHERE content_id = ? ORDER BY id DESC LIMIT 1", (content_id,))
+        analysis = cur.fetchone()
+        
+        result = {
+            'item': dict(item) if item else None,
+            'analysis': None,
+            'executive_summary': None
+        }
+        
+        if analysis:
+            analysis_text = analysis.get('analysis', '') or ''
+            result['analysis'] = {
+                'id': analysis.get('id'),
+                'relevance': analysis.get('relevance'),
+                'analysis_length': len(analysis_text),
+                'analysis_preview': analysis_text[:500]
+            }
+            # Extrair EXECUTIVE_SUMMARY
+            for line in analysis_text.split('\n'):
+                line = line.strip()
+                if line.startswith('EXECUTIVE_SUMMARY:'):
+                    result['executive_summary'] = line[len('EXECUTIVE_SUMMARY:'):].strip()[:200]
+                    break
+        
+        return jsonify(result)
+
 @app.route('/api/reset-analyzed', methods=['POST'])
 @require_admin
 def reset_analyzed():
