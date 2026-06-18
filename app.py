@@ -267,6 +267,65 @@ def test_send(content_id):
         result['trace'] = _tb.format_exc()
     
     return jsonify(result)
+
+@app.route('/api/send-analyzed', methods=['POST'])
+@require_admin
+def send_analyzed():
+    """Envia itens já analisados para a newsletter (sem re-analisar).
+    Body: {"limit": 10} — envia os N mais recentes analisados
+    """
+    import traceback as _tb
+    from database import get_db, _use_postgres, send_to_newsletter
+    
+    data = request.get_json(silent=True) or {}
+    limit = data.get('limit', 10)
+    
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            if _use_postgres():
+                cur.execute("""
+                    SELECT ci.id FROM content_items ci
+                    WHERE ci.analyzed = TRUE
+                    AND NOT EXISTS (
+                        SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
+                    )
+                    ORDER BY ci.fetched_at DESC LIMIT %s
+                """, (limit,))
+            else:
+                cur.execute("""
+                    SELECT ci.id FROM content_items ci
+                    WHERE ci.analyzed = 1
+                    AND NOT EXISTS (
+                        SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
+                    )
+                    ORDER BY ci.fetched_at DESC LIMIT ?
+                """, (limit,))
+            items = [row['id'] for row in cur.fetchall()]
+        
+        sent = 0
+        errors = []
+        for cid in items:
+            try:
+                if send_to_newsletter(cid):
+                    sent += 1
+            except Exception as e:
+                errors.append({'id': cid, 'error': str(e)})
+        
+        return jsonify({
+            'success': True,
+            'found': len(items),
+            'sent': sent,
+            'errors': errors
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'trace': _tb.format_exc()[-1000:]
+        }), 500
+
+@app.route('/api/dedup', methods=['POST'])
 @require_admin
 def dedup():
     """Remove duplicatas por URL, mantendo o mais antigo."""
