@@ -417,13 +417,21 @@ def _api_search_impl():
     saved_count = 0
     if save and search_results:
         from database import save_content_items_batch, get_existing_urls
+        from urllib.parse import urlparse
         
         hub_items = []
         for r in search_results:
+            # Extrair domínio da URL como source_name (ex: "suno.com.br" em vez de "tavily")
+            url = r.get('url', '')
+            try:
+                domain = urlparse(url).netloc.replace('www.', '')
+            except:
+                domain = r.get('source_name', 'search_engine')
+            
             hub_items.append({
                 'title': r['title'],
-                'url': r['url'],
-                'source_name': r.get('source_name', 'search_engine'),
+                'url': url,
+                'source_name': domain if domain else r.get('source_name', 'search_engine'),
                 'source_type': 'search_engine',
                 'category': 'general',
                 'summary': r.get('summary', ''),

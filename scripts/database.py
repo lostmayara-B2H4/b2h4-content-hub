@@ -217,17 +217,18 @@ def send_to_newsletter(content_id: int) -> bool:
         source_url = item.get('url', '')
         source_name = item.get('source_name', 'Content Hub')
         category = item.get('category', 'general')
+        published_at = item.get('published_at') or item.get('fetched_at') or None
         
         if _use_postgres():
             cur.execute("""
-                INSERT INTO news_items (title, summary, source_url, source_name, category, status, created_at)
-                VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
-            """, (title, summary, source_url, source_name, category))
+                INSERT INTO news_items (title, summary, source_url, source_name, category, status, published_at, created_at)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s, NOW())
+            """, (title, summary, source_url, source_name, category, published_at))
         else:
             cur.execute("""
-                INSERT INTO news_items (title, summary, source_url, source_name, category, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
-            """, (title, summary, source_url, source_name, category))
+                INSERT INTO news_items (title, summary, source_url, source_name, category, status, published_at, created_at)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, datetime('now'))
+            """, (title, summary, source_url, source_name, category, published_at))
         
         conn.commit()
         return True
