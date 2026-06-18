@@ -224,7 +224,49 @@ def analyze_and_send():
             'trace': _tb.format_exc()[-1000:]
         }), 500
 
-@app.route('/api/dedup', methods=['POST'])
+@app.route('/api/test-send/<int:content_id>', methods=['POST'])
+@require_admin
+def test_send(content_id):
+    """Testa send_to_newsletter para um item específico."""
+    import traceback as _tb
+    from database import send_to_newsletter, get_db, _use_postgres
+    
+    result = {'content_id': content_id, 'postgres': _use_postgres()}
+    
+    try:
+        # Verificar se o item existe
+        with get_db() as conn:
+            cur = conn.cursor()
+            if _use_postgres():
+                cur.execute("SELECT id, title, url, source_name, category, summary, analyzed FROM content_items WHERE id = %s", (content_id,))
+            else:
+                cur.execute("SELECT id, title, url, source_name, category, summary, analyzed FROM content_items WHERE id = ?", (content_id,))
+            item = cur.fetchone()
+            if item:
+                result['item'] = dict(item)
+            else:
+                result['error'] = 'Item not found'
+                return jsonify(result)
+        
+        # Verificar se news_items existe
+        with get_db() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) FROM news_items")
+                cnt = cur.fetchone()
+                result['news_items_count'] = cnt[0] if cnt else str(cnt)
+            except Exception as e:
+                result['news_items_error'] = str(e)
+        
+        # Tentar enviar
+        sent = send_to_newsletter(content_id)
+        result['sent'] = sent
+        
+    except Exception as e:
+        result['error'] = str(e)
+        result['trace'] = _tb.format_exc()
+    
+    return jsonify(result)
 @require_admin
 def dedup():
     """Remove duplicatas por URL, mantendo o mais antigo."""

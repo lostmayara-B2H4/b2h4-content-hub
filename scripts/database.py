@@ -160,58 +160,98 @@ def send_to_newsletter(content_id: int) -> bool:
     
     Usa o EXECUTIVE_SUMMARY da análise mais recente como resumo.
     Se não houver análise, usa o snippet original do content_item.
+    
+    No PostgreSQL (Supabase/Render), chama a API REST do Newsletter
+    para evitar problemas de schema/permissions entre serviços.
     """
-    with get_db() as conn:
-        cur = conn.cursor()
+    import urllib.request as _urllib
+    import json as _json
+    
+    # No PostgreSQL, usar API REST do Newsletter
+    if _use_postgres():
+        newsletter_url = os.environ.get('NEWSLETTER_URL', 'https://b2h4-newsletter.onrender.com')
+        admin_key = os.environ.get('NEWSLETTER_ADMIN_KEY', os.environ.get('ADMIN_KEY', '1234'))
         
-        # Busca o item no Content Hub
-        if _use_postgres():
+        with get_db() as conn:
+            cur = conn.cursor()
             cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = %s", (content_id,))
-        else:
-            cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (content_id,))
-        
-        item = cur.fetchone()
-        if not item:
-            return False
-        
-        # Verifica se já foi enviado
-        if _use_postgres():
-            cur.execute("SELECT 1 FROM news_items WHERE source_url = %s", (item['url'],))
-        else:
-            cur.execute("SELECT 1 FROM news_items WHERE source_url = ?", (item['url'],))
-        
-        if cur.fetchone():
-            return False  # Já existe
-        
-        # Busca a análise mais recente para pegar o EXECUTIVE_SUMMARY
-        summary = item.get('summary', '') or ''
-        if _use_postgres():
+            item = cur.fetchone()
+            if not item:
+                return False
+            
+            # Busca a análise mais recente para pegar o EXECUTIVE_SUMMARY
+            summary = item.get('summary', '') or ''
             cur.execute("""
                 SELECT analysis FROM content_analysis 
                 WHERE content_id = %s 
                 ORDER BY created_at DESC LIMIT 1
             """, (content_id,))
-        else:
-            cur.execute("""
-                SELECT analysis FROM content_analysis 
-                WHERE content_id = ? 
-                ORDER BY created_at DESC LIMIT 1
-            """, (content_id,))
+            analysis_row = cur.fetchone()
+            if analysis_row and analysis_row.get('analysis'):
+                analysis_text = analysis_row['analysis']
+                for line in analysis_text.split('\n'):
+                    line = line.strip()
+                    if line.startswith('EXECUTIVE_SUMMARY:'):
+                        summary = line[len('EXECUTIVE_SUMMARY:'):].strip()
+                        break
+                else:
+                    summary = analysis_text[:300].strip()
         
+        # Chama API do Newsletter (bulk-import espera lista)
+        payload = _json.dumps([{
+            'title': (item.get('title', '') or '')[:300],
+            'summary': summary[:1000],
+            'source_url': item.get('url', ''),
+            'source_name': item.get('source_name', 'Content Hub'),
+            'category': item.get('category', 'general'),
+            'importance': 3
+        }]).encode()
+        
+        req = _urllib.Request(
+            f"{newsletter_url}/api/curator/bulk-import?admin_key={admin_key}",
+            data=payload,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        try:
+            resp = _urllib.urlopen(req, timeout=30)
+            result = _json.loads(resp.read())
+            return result.get('success', False)
+        except Exception as e:
+            import logging
+            logging.getLogger('database').error(f"send_to_newsletter API error: {e}")
+            return False
+    
+    # SQLite (local/dev) - INSERT direto
+    with get_db() as conn:
+        cur = conn.cursor()
+        
+        cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (content_id,))
+        item = cur.fetchone()
+        if not item:
+            return False
+        
+        cur.execute("SELECT 1 FROM news_items WHERE source_url = ?", (item['url'],))
+        if cur.fetchone():
+            return False
+        
+        summary = item.get('summary', '') or ''
+        cur.execute("""
+            SELECT analysis FROM content_analysis 
+            WHERE content_id = ? 
+            ORDER BY created_at DESC LIMIT 1
+        """, (content_id,))
         analysis_row = cur.fetchone()
         if analysis_row and analysis_row.get('analysis'):
             analysis_text = analysis_row['analysis']
-            # Extrair EXECUTIVE_SUMMARY da análise
             for line in analysis_text.split('\n'):
                 line = line.strip()
                 if line.startswith('EXECUTIVE_SUMMARY:'):
                     summary = line[len('EXECUTIVE_SUMMARY:'):].strip()
                     break
             else:
-                # Se não encontrou EXECUTIVE_SUMMARY, usa os primeiros 300 chars
                 summary = analysis_text[:300].strip()
         
-        # Insere na news_items da newsletter
         title = item.get('title', '')[:300]
         summary = summary[:1000] if summary else ''
         source_url = item.get('url', '')
@@ -219,16 +259,10 @@ def send_to_newsletter(content_id: int) -> bool:
         category = item.get('category', 'general')
         published_at = item.get('published_at') or item.get('fetched_at') or None
         
-        if _use_postgres():
-            cur.execute("""
-                INSERT INTO news_items (title, summary, source_url, source_name, category, status, published_at, created_at)
-                VALUES (%s, %s, %s, %s, %s, 'pending', %s, NOW())
-            """, (title, summary, source_url, source_name, category, published_at))
-        else:
-            cur.execute("""
-                INSERT INTO news_items (title, summary, source_url, source_name, category, status, published_at, created_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', ?, datetime('now'))
-            """, (title, summary, source_url, source_name, category, published_at))
+        cur.execute("""
+            INSERT INTO news_items (title, summary, source_url, source_name, category, status, published_at, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, datetime('now'))
+        """, (title, summary, source_url, source_name, category, published_at))
         
         conn.commit()
         return True
