@@ -172,6 +172,7 @@ def analyze_and_send():
             items = [dict(r) for r in cur.fetchall()]
             content_ids = [i['id'] for i in items]
     
+    import traceback as _tb
     analyzed = 0
     sent = 0
     errors = []
@@ -201,7 +202,7 @@ def analyze_and_send():
                 sent += 1
                 
         except Exception as e:
-            errors.append({'id': cid, 'error': str(e)})
+            errors.append({'id': cid, 'error': str(e), 'trace': _tb.format_exc()[-500:]})
     
     return jsonify({
         'success': True,
