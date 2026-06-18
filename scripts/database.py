@@ -187,6 +187,10 @@ def send_to_newsletter(content_id: int) -> bool:
                 ORDER BY created_at DESC LIMIT 1
             """, (content_id,))
             analysis_row = cur.fetchone()
+            
+            import logging as _log
+            _log.warning(f"[send_to_newsletter] content_id={content_id} analysis_row={'FOUND' if analysis_row else 'NONE'}")
+            
             if analysis_row and analysis_row.get('analysis'):
                 analysis_text = analysis_row['analysis']
                 for line in analysis_text.split('\n'):
@@ -196,6 +200,9 @@ def send_to_newsletter(content_id: int) -> bool:
                         break
                 else:
                     summary = analysis_text[:300].strip()
+                _log.warning(f"[send_to_newsletter] EXECUTIVE_SUMMARY found, summary len={len(summary)}")
+            else:
+                _log.warning(f"[send_to_newsletter] Using fallback summary, analysis_row={analysis_row}")
         
         # Chama API do Newsletter (bulk-import espera lista)
         payload = _json.dumps([{
