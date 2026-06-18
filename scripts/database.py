@@ -208,9 +208,12 @@ def send_to_newsletter(content_id: int) -> bool:
         }]).encode()
         
         req = _urllib.Request(
-            f"{newsletter_url}/api/curator/bulk-import?admin_key={admin_key}",
+            f"{newsletter_url}/api/curator/bulk-import",
             data=payload,
-            headers={'Content-Type': 'application/json'},
+            headers={
+                'Content-Type': 'application/json',
+                'X-Admin-Key': admin_key
+            },
             method='POST'
         )
         try:
