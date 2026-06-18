@@ -149,6 +149,67 @@ def send_to_newsletter(content_id):
     else:
         return jsonify({'success': False, 'message': 'Item não encontrado ou já enviado'}), 400
 
+
+@app.route('/api/analyze-and-send', methods=['POST'])
+@require_admin
+def analyze_and_send():
+    """Analisa itens não analisados e envia para newsletter.
+    
+    Body opcional: {"content_ids": [1, 2, 3]} — se não fornecido, analisa todos não-analisados
+    """
+    from database import get_all_content_ids
+    from analyze_content import analyze_content_item
+    from database import send_to_newsletter
+    
+    data = request.get_json(silent=True) or {}
+    content_ids = data.get('content_ids', None)
+    
+    if not content_ids:
+        # Busca todos os não-analizados
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE analyzed = FALSE OR analyzed = 0 ORDER BY fetched_at DESC LIMIT 50")
+            items = [dict(r) for r in cur.fetchall()]
+            content_ids = [i['id'] for i in items]
+    
+    analyzed = 0
+    sent = 0
+    errors = []
+    
+    for cid in content_ids[:50]:  # Max 50 por chamada
+        try:
+            # Busca item
+            with get_db() as conn:
+                cur = conn.cursor()
+                if _use_postgres():
+                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = %s", (cid,))
+                else:
+                    cur.execute("SELECT id, title, url, source_name, category, summary FROM content_items WHERE id = ?", (cid,))
+                item = cur.fetchone()
+            
+            if not item:
+                continue
+            item = dict(item)
+            
+            # Analisa se não foi analisado
+            if not item.get('analyzed'):
+                analyze_content_item(item)
+                analyzed += 1
+            
+            # Envia para newsletter
+            if send_to_newsletter(cid):
+                sent += 1
+                
+        except Exception as e:
+            errors.append({'id': cid, 'error': str(e)})
+    
+    return jsonify({
+        'success': True,
+        'analyzed': analyzed,
+        'sent': sent,
+        'errors': errors
+    })
+
 @app.route('/api/dedup', methods=['POST'])
 @require_admin
 def dedup():

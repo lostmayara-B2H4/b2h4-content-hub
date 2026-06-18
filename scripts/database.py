@@ -156,7 +156,11 @@ def save_content_item(item: Dict) -> Optional[int]:
 
 
 def send_to_newsletter(content_id: int) -> bool:
-    """Envia um content_item para a tabela news_items da newsletter."""
+    """Envia um content_item para a tabela news_items da newsletter.
+    
+    Usa o EXECUTIVE_SUMMARY da análise mais recente como resumo.
+    Se não houver análise, usa o snippet original do content_item.
+    """
     with get_db() as conn:
         cur = conn.cursor()
         
@@ -179,9 +183,37 @@ def send_to_newsletter(content_id: int) -> bool:
         if cur.fetchone():
             return False  # Já existe
         
+        # Busca a análise mais recente para pegar o EXECUTIVE_SUMMARY
+        summary = item.get('summary', '') or ''
+        if _use_postgres():
+            cur.execute("""
+                SELECT analysis FROM content_analysis 
+                WHERE content_id = %s 
+                ORDER BY created_at DESC LIMIT 1
+            """, (content_id,))
+        else:
+            cur.execute("""
+                SELECT analysis FROM content_analysis 
+                WHERE content_id = ? 
+                ORDER BY created_at DESC LIMIT 1
+            """, (content_id,))
+        
+        analysis_row = cur.fetchone()
+        if analysis_row and analysis_row.get('analysis'):
+            analysis_text = analysis_row['analysis']
+            # Extrair EXECUTIVE_SUMMARY da análise
+            for line in analysis_text.split('\n'):
+                line = line.strip()
+                if line.startswith('EXECUTIVE_SUMMARY:'):
+                    summary = line[len('EXECUTIVE_SUMMARY:'):].strip()
+                    break
+            else:
+                # Se não encontrou EXECUTIVE_SUMMARY, usa os primeiros 300 chars
+                summary = analysis_text[:300].strip()
+        
         # Insere na news_items da newsletter
         title = item.get('title', '')[:300]
-        summary = item.get('summary', '')[:1000] if item.get('summary') else ''
+        summary = summary[:1000] if summary else ''
         source_url = item.get('url', '')
         source_name = item.get('source_name', 'Content Hub')
         category = item.get('category', 'general')
