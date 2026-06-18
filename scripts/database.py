@@ -200,7 +200,14 @@ def send_to_newsletter(content_id: int) -> bool:
                         break
                 else:
                     summary = analysis_text[:300].strip()
-                _log.warning(f"[send_to_newsletter] EXECUTIVE_SUMMARY found, summary len={len(summary)}")
+                
+                # Validação: mínimo 3 linhas no EXECUTIVE_SUMMARY
+                non_empty_lines = [l for l in summary.split('\n') if l.strip() and l.strip() not in ('**', '*', '---', '===')]
+                if len(non_empty_lines) < 3:
+                    _log.warning(f"[send_to_newsletter] SKIPPED content_id={content_id}: EXECUTIVE_SUMMARY too short ({len(non_empty_lines)} lines)")
+                    return False
+                
+                _log.warning(f"[send_to_newsletter] EXECUTIVE_SUMMARY found, summary len={len(summary)}, lines={len(non_empty_lines)}")
             else:
                 _log.warning(f"[send_to_newsletter] Using fallback summary, analysis_row={analysis_row}")
         

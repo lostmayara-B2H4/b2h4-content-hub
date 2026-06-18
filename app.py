@@ -382,6 +382,7 @@ def send_analyzed():
         
         payload_items = []
         debug_info = []
+        skipped_short = 0
         for item in items:
             summary = ''
             analysis = item.get('analysis', '') or ''
@@ -401,6 +402,13 @@ def send_analyzed():
                     break
             if not summary:
                 summary = (item.get('analysis', '') or '')[:300]
+            
+            # Validação: mínimo 3 linhas no EXECUTIVE_SUMMARY
+            # Conta linhas não-vazias (ignora linhas em branco e markdown vazio)
+            non_empty_lines = [l for l in summary.split('\n') if l.strip() and l.strip() not in ('**', '*', '---', '===')]
+            if len(non_empty_lines) < 3:
+                skipped_short += 1
+                continue
             
             payload_items.append({
                 'title': (item.get('title', '') or '')[:300],
@@ -438,6 +446,7 @@ def send_analyzed():
             'success': True,
             'found': len(items),
             'sent': inserted,
+            'skipped_short': skipped_short,
             'debug': debug_info[:3],
             'errors': []
         })
