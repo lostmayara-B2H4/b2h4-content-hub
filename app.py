@@ -381,9 +381,19 @@ def send_analyzed():
         admin_key = os.environ.get('ADMIN_KEY', '1234')
         
         payload_items = []
+        debug_info = []
         for item in items:
             summary = ''
             analysis = item.get('analysis', '') or ''
+            
+            # DEBUG
+            debug_info.append({
+                'id': item.get('id'),
+                'has_analysis': bool(analysis),
+                'analysis_len': len(analysis),
+                'analysis_preview': analysis[:100]
+            })
+            
             for line in analysis.split('\n'):
                 line = line.strip()
                 if line.startswith('EXECUTIVE_SUMMARY:'):
@@ -428,6 +438,7 @@ def send_analyzed():
             'success': True,
             'found': len(items),
             'sent': inserted,
+            'debug': debug_info[:3],
             'errors': []
         })
     except Exception as e:
