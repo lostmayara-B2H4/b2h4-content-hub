@@ -338,8 +338,8 @@ def send_analyzed():
     """Envia itens já analisados para a newsletter (sem re-analisar).
     Body: {"limit": 10} — envia os N mais recentes analisados
     """
-    import traceback as _tb
-    from database import get_db, _use_postgres, send_to_newsletter
+    import traceback as _tb, urllib.request as _urllib, json as _json
+    from database import get_db, _use_postgres
     
     data = request.get_json(silent=True) or {}
     limit = data.get('limit', 10)
@@ -349,7 +349,10 @@ def send_analyzed():
             cur = conn.cursor()
             if _use_postgres():
                 cur.execute("""
-                    SELECT ci.id FROM content_items ci
+                    SELECT ci.id, ci.title, ci.url, ci.source_name, ci.category,
+                           ca.analysis
+                    FROM content_items ci
+                    INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = TRUE
                     AND NOT EXISTS (
                         SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
@@ -358,29 +361,74 @@ def send_analyzed():
                 """, (limit,))
             else:
                 cur.execute("""
-                    SELECT ci.id FROM content_items ci
+                    SELECT ci.id, ci.title, ci.url, ci.source_name, ci.category,
+                           ca.analysis
+                    FROM content_items ci
+                    INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = 1
                     AND NOT EXISTS (
                         SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
                     )
                     ORDER BY ci.fetched_at DESC LIMIT ?
                 """, (limit,))
-            items = [row['id'] for row in cur.fetchall()]
+            items = [dict(r) for r in cur.fetchall()]
         
-        sent = 0
-        errors = []
-        for cid in items:
-            try:
-                if send_to_newsletter(cid):
-                    sent += 1
-            except Exception as e:
-                errors.append({'id': cid, 'error': str(e)})
+        if not items:
+            return jsonify({'success': True, 'found': 0, 'sent': 0, 'message': 'Nenhum item novo para enviar'})
+        
+        # Extrair EXECUTIVE_SUMMARY de cada item
+        newsletter_url = 'https://b2h4-newsletter.onrender.com'
+        admin_key = os.environ.get('ADMIN_KEY', '1234')
+        
+        payload_items = []
+        for item in items:
+            summary = ''
+            analysis = item.get('analysis', '') or ''
+            for line in analysis.split('\n'):
+                line = line.strip()
+                if line.startswith('EXECUTIVE_SUMMARY:'):
+                    summary = line[len('EXECUTIVE_SUMMARY:'):].strip()
+                    break
+            if not summary:
+                summary = (item.get('analysis', '') or '')[:300]
+            
+            payload_items.append({
+                'title': (item.get('title', '') or '')[:300],
+                'summary': summary[:1000],
+                'source_url': item.get('url', ''),
+                'source_name': item.get('source_name', 'Content Hub'),
+                'category': item.get('category', 'general'),
+                'importance': 3
+            })
+        
+        # Envia para newsletter via API
+        payload = _json.dumps(payload_items).encode()
+        req = _urllib.Request(
+            f"{newsletter_url}/api/curator/bulk-import",
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Admin-Key': admin_key
+            },
+            method='POST'
+        )
+        
+        try:
+            resp = _urllib.urlopen(req, timeout=30)
+            result = _json.loads(resp.read())
+            inserted = result.get('inserted', 0)
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Newsletter API error: {e}',
+                'found': len(items)
+            }), 500
         
         return jsonify({
             'success': True,
             'found': len(items),
-            'sent': sent,
-            'errors': errors
+            'sent': inserted,
+            'errors': []
         })
     except Exception as e:
         return jsonify({
