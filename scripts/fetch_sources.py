@@ -16,6 +16,36 @@ from urllib.parse import urlparse
 
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.utils import parsedate_to_datetime
+
+
+def parse_date_to_iso(date_str: Optional[str]) -> Optional[str]:
+    """Converte string de data (RFC 2822, ISO, etc) para ISO 8601.
+    
+    Aceita formatos como:
+    - "Fri, 19 Jun 2026 01:01:00 +0000" (RFC 2822)
+    - "2026-06-18T00:17:12+00:00" (ISO 8601)
+    - "2026-06-18" (date only)
+    
+    Retorna string ISO 8601 ou None se não conseguir parsear.
+    """
+    if not date_str or not str(date_str).strip():
+        return None
+    date_str = str(date_str).strip()
+    # Tentar RFC 2822 primeiro (comum em RSS)
+    try:
+        dt = parsedate_to_datetime(date_str)
+        return dt.isoformat()
+    except Exception:
+        pass
+    # Tentar ISO 8601
+    for fmt in ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"]:
+        try:
+            dt = datetime.strptime(date_str[:len(fmt)], fmt)
+            return dt.replace(tzinfo=timezone.utc).isoformat()
+        except Exception:
+            continue
+    return None
 
 # Setup logging
 logging.basicConfig(
@@ -447,7 +477,7 @@ def fetch_all_sources(query: str = None, topic: str = "general") -> Dict:
                 'category': classify_category(item['title']),
                 'summary': '',
                 'raw_content': '',
-                'published_at': item.get('published_at'),
+                'published_at': parse_date_to_iso(item.get('published_at')),
                 'metadata': {'query': 'search_engine'}
             })
         # Batch dedup + save
@@ -500,7 +530,7 @@ def fetch_all_sources(query: str = None, topic: str = "general") -> Dict:
                             'category': 'general',  # Será reclassificado depois
                             'summary': r.get('summary', ''),
                             'raw_content': '',
-                            'published_at': r.get('published'),
+                            'published_at': parse_date_to_iso(r.get('published')),
                             'metadata': {'query': sq, 'source': r.get('source_name', 'search')}
                         })
                     
