@@ -347,6 +347,7 @@ def send_analyzed():
     
     data = request.get_json(silent=True) or {}
     limit = data.get('limit', 10)
+    offset = data.get('offset', 0)
     
     try:
         with get_db() as conn:
@@ -359,8 +360,8 @@ def send_analyzed():
                     FROM content_items ci
                     INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = TRUE
-                    ORDER BY ci.fetched_at DESC LIMIT %s
-                """, (limit,))
+                    ORDER BY ci.id ASC LIMIT %s OFFSET %s
+                """, (limit, offset))
             else:
                 cur.execute("""
                     SELECT ci.id, ci.title, ci.url, ci.source_name, ci.category,
@@ -369,8 +370,8 @@ def send_analyzed():
                     FROM content_items ci
                     INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = 1
-                    ORDER BY ci.fetched_at DESC LIMIT ?
-                """, (limit,))
+                    ORDER BY ci.id ASC LIMIT ? OFFSET ?
+                """, (limit, offset))
             items = [dict(r) for r in cur.fetchall()]
         
         if not items:
