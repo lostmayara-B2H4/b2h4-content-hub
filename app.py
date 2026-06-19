@@ -403,10 +403,9 @@ def send_analyzed():
             if not summary:
                 summary = (item.get('analysis', '') or '')[:300]
             
-            # Validação: mínimo 3 linhas no EXECUTIVE_SUMMARY
-            # Conta linhas não-vazias (ignora linhas em branco e markdown vazio)
-            non_empty_lines = [l for l in summary.split('\n') if l.strip() and l.strip() not in ('**', '*', '---', '===')]
-            if len(non_empty_lines) < 3:
+            # Validação: mínimo 20 palavras no EXECUTIVE_SUMMARY
+            word_count = len(summary.split())
+            if word_count < 20:
                 skipped_short += 1
                 continue
             
