@@ -27,7 +27,18 @@ def get_db() -> Generator[Any, None, None]:
         global _pool
         if _pool is None:
             from psycopg2.pool import ThreadedConnectionPool
-            _pool = ThreadedConnectionPool(minconn=2, maxconn=10, dsn=DATABASE_URL, cursor_factory=RealDictCursor)
+            # Parse DSN to kwargs to handle special chars in password (e.g. !)
+            parsed = urlparse(DATABASE_URL)
+            pwd = quote(parsed.password, safe='') if parsed.password else ''
+            _pool = ThreadedConnectionPool(
+                minconn=2, maxconn=10,
+                host=parsed.hostname,
+                port=parsed.port or 5432,
+                dbname=parsed.path.lstrip('/'),
+                user=parsed.username,
+                password=pwd,
+                cursor_factory=RealDictCursor
+            )
         conn = _pool.getconn()
         try:
             yield conn
