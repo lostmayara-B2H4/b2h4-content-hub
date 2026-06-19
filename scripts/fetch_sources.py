@@ -20,15 +20,7 @@ from email.utils import parsedate_to_datetime
 
 
 def parse_date_to_iso(date_str: Optional[str]) -> Optional[str]:
-    """Converte string de data (RFC 2822, ISO, etc) para ISO 8601.
-    
-    Aceita formatos como:
-    - "Fri, 19 Jun 2026 01:01:00 +0000" (RFC 2822)
-    - "2026-06-18T00:17:12+00:00" (ISO 8601)
-    - "2026-06-18" (date only)
-    
-    Retorna string ISO 8601 ou None se não conseguir parsear.
-    """
+    """Converte string de data (RFC 2822, ISO, etc) para ISO 8601."""
     if not date_str or not str(date_str).strip():
         return None
     date_str = str(date_str).strip()
@@ -38,11 +30,19 @@ def parse_date_to_iso(date_str: Optional[str]) -> Optional[str]:
         return dt.isoformat()
     except Exception:
         pass
-    # Tentar ISO 8601
+    # Tentar fromisoformat (Python 3.7+)
+    try:
+        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        return dt.isoformat()
+    except Exception:
+        pass
+    # Tentar formatos manuais
     for fmt in ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"]:
         try:
             dt = datetime.strptime(date_str[:len(fmt)], fmt)
-            return dt.replace(tzinfo=timezone.utc).isoformat()
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.isoformat()
         except Exception:
             continue
     return None
