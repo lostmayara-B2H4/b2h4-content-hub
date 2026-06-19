@@ -350,25 +350,21 @@ def send_analyzed():
             if _use_postgres():
                 cur.execute("""
                     SELECT ci.id, ci.title, ci.url, ci.source_name, ci.category,
+                           ci.published_at, ci.fetched_at,
                            ca.analysis
                     FROM content_items ci
                     INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = TRUE
-                    AND NOT EXISTS (
-                        SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
-                    )
                     ORDER BY ci.fetched_at DESC LIMIT %s
                 """, (limit,))
             else:
                 cur.execute("""
                     SELECT ci.id, ci.title, ci.url, ci.source_name, ci.category,
+                           ci.published_at, ci.fetched_at,
                            ca.analysis
                     FROM content_items ci
                     INNER JOIN content_analysis ca ON ca.content_id = ci.id
                     WHERE ci.analyzed = 1
-                    AND NOT EXISTS (
-                        SELECT 1 FROM news_items ni WHERE ni.source_url = ci.url
-                    )
                     ORDER BY ci.fetched_at DESC LIMIT ?
                 """, (limit,))
             items = [dict(r) for r in cur.fetchall()]
@@ -409,13 +405,17 @@ def send_analyzed():
                 skipped_short += 1
                 continue
             
+            # Data de publicação: usa published_at se existir, senão fetched_at
+            pub_date = item.get('published_at') or item.get('fetched_at') or ''
+            
             payload_items.append({
                 'title': (item.get('title', '') or '')[:300],
                 'summary': summary[:1000],
                 'source_url': item.get('url', ''),
                 'source_name': item.get('source_name', 'Content Hub'),
                 'category': item.get('category', 'general'),
-                'importance': 3
+                'importance': 3,
+                'published_at': pub_date
             })
         
         # Envia para newsletter via API
