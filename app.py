@@ -407,6 +407,11 @@ def send_analyzed():
             
             # Data de publicação: usa published_at se existir, senão fetched_at
             pub_date = item.get('published_at') or item.get('fetched_at') or ''
+            # Converter datetime para string ISO
+            if hasattr(pub_date, 'isoformat'):
+                pub_date = pub_date.isoformat()
+            elif pub_date:
+                pub_date = str(pub_date)
             
             payload_items.append({
                 'title': (item.get('title', '') or '')[:300],
