@@ -112,7 +112,11 @@ def api_items():
 @require_admin
 def trigger_fetch():
     from fetch_sources import fetch_all_sources
-    return jsonify(fetch_all_sources())
+    import threading
+    # Rodar em background para não timeoutar
+    thread = threading.Thread(target=fetch_all_sources, daemon=True)
+    thread.start()
+    return jsonify({'success': True, 'message': 'Fetch iniciado em background'})
 
 
 @app.route('/api/trigger-analyze', methods=['POST'])
