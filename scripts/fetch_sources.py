@@ -17,6 +17,26 @@ from urllib.parse import urlparse
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.utils import parsedate_to_datetime
+from functools import wraps
+
+def retry_on_failure(max_retries=3, delay=2, backoff=2):
+    """Decorator para retry automático com backoff exponencial."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if attempt < max_retries:
+                        wait = delay * (backoff ** attempt)
+                        logger.warning(f"  Retry {attempt+1}/{max_retries} para {func.__name__}: {e} (aguardando {wait}s)")
+                        time.sleep(wait)
+            raise last_exc
+        return wrapper
+    return decorator
 
 
 def parse_date_to_iso(date_str: Optional[str]) -> Optional[str]:
@@ -53,6 +73,13 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
 )
 logger = logging.getLogger('fetch_sources')
+
+# Tenta usar logger estruturado se disponível
+try:
+    from logger import get_logger as _get_logger
+    logger = _get_logger('fetch_sources')
+except ImportError:
+    pass
 
 # Adiciona path do database
 sys.path.insert(0, os.path.dirname(__file__))
@@ -166,6 +193,7 @@ def classify_category(title: str, summary: str = '') -> str:
     return 'general'
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_rss_feed(name: str, url: str) -> List[Dict]:
     """Coleta items de um feed RSS."""
     import feedparser
@@ -212,6 +240,7 @@ def fetch_rss_feed(name: str, url: str) -> List[Dict]:
     return items
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_arxiv() -> List[Dict]:
     """Coleta papers do arXiv API (gratuito, sem key)."""
     items = []
@@ -258,6 +287,7 @@ def fetch_arxiv() -> List[Dict]:
     return items
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_youtube_rss(channel_name: str, channel_id: str) -> List[Dict]:
     """Coleta vídeos do YouTube via RSS (sem API key)."""
     import feedparser
@@ -297,6 +327,7 @@ def fetch_youtube_rss(channel_name: str, channel_id: str) -> List[Dict]:
     return items
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_hackernews() -> List[Dict]:
     """Coleta do Hacker News API (gratuito, sem key)."""
     items = []
@@ -350,6 +381,7 @@ def fetch_hackernews() -> List[Dict]:
     return items
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_reddit_rss(subreddit: str) -> List[Dict]:
     """Coleta do Reddit via RSS (sem API key)."""
     import feedparser
@@ -393,6 +425,7 @@ def fetch_reddit_rss(subreddit: str) -> List[Dict]:
     return items
 
 
+@retry_on_failure(max_retries=3, delay=2)
 def fetch_github_trending() -> List[Dict]:
     """Coleta repositórios trending do GitHub via API (gratuita, sem key)."""
     items = []

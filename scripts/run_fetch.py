@@ -2,11 +2,12 @@
 """Script para rodar fetch_sources e salvar no banco."""
 import os, sys, json
 
-# Adicionar path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
+# Adicionar paths
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fetch_sources import fetch_all_sources
-from database import get_db, _use_postgres, init_db
+from database import get_db, _use_postgres
 
 def main():
     print("Iniciando fetch_sources...")
@@ -14,7 +15,6 @@ def main():
     print(f"Stats: {json.dumps(stats, indent=2)}")
     
     # Verificar total
-    init_db()
     with get_db() as conn:
         if _use_postgres():
             cur = conn.cursor()

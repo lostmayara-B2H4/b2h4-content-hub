@@ -16,6 +16,15 @@ from flask_caching import Cache
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 sys.path.insert(0, os.path.dirname(__file__))
+
+# Logger estruturado
+try:
+    from logger import get_logger as _get_logger
+    _app_logger = _get_logger('content-hub')
+except ImportError:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    _app_logger = logging.getLogger('app')
+
 from database import get_db, get_stats, get_recent_items, clean_title
 
 # App start time for uptime tracking
@@ -108,8 +117,11 @@ def api_items():
     return jsonify({'items': items, 'count': total})
 
 
+from rate_limiter import rate_limit
+
 @app.route('/api/trigger-fetch', methods=['POST'])
 @require_admin
+@rate_limit(strict=True)
 def trigger_fetch():
     from fetch_sources import fetch_all_sources
     import threading
@@ -121,6 +133,7 @@ def trigger_fetch():
 
 @app.route('/api/trigger-analyze', methods=['POST'])
 @require_admin
+@rate_limit(strict=True)
 def trigger_analyze():
     from analyze_content import analyze_batch
     limit = request.args.get('limit', 10, type=int)
@@ -142,6 +155,82 @@ def debug():
         v = os.environ.get(k, '')
         result[k] = f"✓ ({v[:8]}...{v[-4:]})" if v else "✗ NÃO configurada"
     return jsonify(result)
+
+
+@app.route('/api/status')
+def api_status():
+    """Status completo do sistema: Hub + Newsletter."""
+    from database import get_db, _use_postgres
+    import urllib.request as _urllib
+    import json as _json
+
+    hub_total = 0
+    hub_analyzed = 0
+    hub_db_ok = False
+    try:
+        with get_db() as conn:
+            hub_db_ok = True
+            if _use_postgres():
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) as cnt FROM content_items")
+                hub_total = cur.fetchone()['cnt']
+                cur.execute("SELECT COUNT(*) as cnt FROM content_items WHERE analyzed = TRUE")
+                hub_analyzed = cur.fetchone()['cnt']
+            else:
+                row = conn.execute("SELECT COUNT(*) as cnt FROM content_items").fetchone()
+                hub_total = row['cnt']
+                row2 = conn.execute("SELECT COUNT(*) as cnt FROM content_items WHERE analyzed = 1").fetchone()
+                hub_analyzed = row2['cnt']
+    except Exception:
+        pass
+
+    # Consulta newsletter
+    newsletter_total = 0
+    newsletter_pending = 0
+    newsletter_db_ok = False
+    try:
+        newsletter_url = os.environ.get('NEWSLETTER_URL', 'https://b2h4-newsletter.onrender.com')
+        admin_key = os.environ.get('ADMIN_KEY', '1234')
+        req = _urllib.Request(
+            f"{newsletter_url}/health",
+            headers={'X-Admin-Key': admin_key}
+        )
+        resp = _urllib.urlopen(req, timeout=10)
+        data = _json.loads(resp.read())
+        newsletter_db_ok = data.get('status') == 'ok'
+        newsletter_total = data.get('news_items', 0)
+    except Exception:
+        pass
+
+    try:
+        newsletter_url = os.environ.get('NEWSLETTER_URL', 'https://b2h4-newsletter.onrender.com')
+        admin_key = os.environ.get('ADMIN_KEY', '1234')
+        req = _urllib.Request(
+            f"{newsletter_url}/api/curator/items?status=pending&limit=1000",
+            headers={'X-Admin-Key': admin_key}
+        )
+        resp = _urllib.urlopen(req, timeout=10)
+        items = _json.loads(resp.read())
+        newsletter_pending = len(items.get('items', []))
+    except Exception:
+        pass
+
+    return jsonify({
+        "hub": {
+            "db_ok": hub_db_ok,
+            "total_items": hub_total,
+            "analyzed": hub_analyzed,
+            "unanalyzed": hub_total - hub_analyzed,
+        },
+        "newsletter": {
+            "db_ok": newsletter_db_ok,
+            "total_items": newsletter_total,
+            "pending": newsletter_pending,
+        },
+        "pipeline": {
+            "hub_to_newsletter_gap": hub_analyzed - newsletter_total,
+        }
+    })
 @app.route('/api/send-to-newsletter/<int:content_id>', methods=['POST'])
 @require_admin
 def send_to_newsletter(content_id):
@@ -338,6 +427,7 @@ def test_send(content_id):
 
 @app.route('/api/send-analyzed', methods=['POST'])
 @require_admin
+@rate_limit(strict=True)
 def send_analyzed():
     """Envia itens já analisados para a newsletter (sem re-analisar).
     Body: {"limit": 10} — envia os N mais recentes analisados
