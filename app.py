@@ -131,6 +131,52 @@ def trigger_fetch():
     return jsonify({'success': True, 'message': 'Fetch iniciado em background'})
 
 
+
+
+@app.route('/api/webhook/fetch', methods=['POST'])
+def webhook_fetch():
+    """Webhook para disparar fetch de fontes (para cron externo, GitHub Actions, etc.).
+    
+    Segurança: requer WEBHOOK_SECRET no header X-Webhook-Secret.
+    Sem rate limit para permitir chamadas de cron.
+    """
+    from fetch_sources import fetch_all_sources
+    import threading
+    
+    webhook_secret = os.environ.get('WEBHOOK_SECRET', '')
+    if webhook_secret:
+        provided = request.headers.get('X-Webhook-Secret', '')
+        if provided != webhook_secret:
+            return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Opcional: receber sources específicos no body
+    data = request.get_json(silent=True) or {}
+    sources_filter = data.get('sources', None)  # None = todos
+    
+    def _run_fetch():
+        try:
+            if sources_filter:
+                from fetch_sources import fetch_all_sources
+                # TODO: implementar filtro por source
+                fetch_all_sources()
+            else:
+                fetch_all_sources()
+        except Exception as e:
+            import logging
+            logging.error(f"webhook_fetch error: {e}")
+    
+    thread = threading.Thread(target=_run_fetch, daemon=True)
+    thread.start()
+    return jsonify({'success': True, 'message': 'Fetch iniciado via webhook', 'sources': sources_filter or 'all'})
+
+@app.route('/api/webhook/status', methods=['GET'])
+def webhook_status():
+    """Status responda para health checks de webhook."""
+    from database import get_stats
+    stats = get_stats()
+    return jsonify({'status': 'ok', 'stats': stats})
+
+
 @app.route('/api/trigger-analyze', methods=['POST'])
 @require_admin
 @rate_limit(strict=True)
@@ -800,6 +846,59 @@ def _api_search_impl():
         'total': len(search_results) if search_results else 0
     })
 
+
+
+
+# ── #19: Informativos CRUD no Hub ───────────────────────────────────
+
+@app.route('/api/informativos', methods=['GET'])
+def api_informativos_list():
+    """Lista informativos ativos."""
+    from database import get_informativos_ativos
+    tipo = request.args.get('tipo', None)
+    limite = int(request.args.get('limite', 20))
+    items = get_informativos_ativos(tipo=tipo, limite=limite)
+    return jsonify({'success': True, 'items': items, 'count': len(items)})
+
+@app.route('/api/informativos', methods=['POST'])
+@require_admin
+def api_informativos_create():
+    """Cria um novo informativo."""
+    from database import create_informativo
+    data = request.get_json()
+    if not data or not data.get('titulo') or not data.get('tipo'):
+        return jsonify({'success': False, 'error': 'titulo e tipo sao obrigatorios'}), 400
+    info_id = create_informativo(
+        titulo=data['titulo'],
+        tipo=data['tipo'],
+        descricao=data.get('descricao'),
+        url=data.get('url'),
+        data_evento=data.get('data_evento'),
+        data_fim=data.get('data_fim'),
+        local=data.get('local'),
+        horario=data.get('horario'),
+        destaque=data.get('destaque', False)
+    )
+    return jsonify({'success': True, 'id': info_id})
+
+@app.route('/api/informativos/<info_id>', methods=['PUT'])
+@require_admin
+def api_informativos_update(info_id):
+    """Atualiza um informativo."""
+    from database import update_informativo
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'Dados vazios'}), 400
+    ok = update_informativo(info_id, **data)
+    return jsonify({'success': ok})
+
+@app.route('/api/informativos/<info_id>', methods=['DELETE'])
+@require_admin
+def api_informativos_delete(info_id):
+    """Remove um informativo (soft delete)."""
+    from database import delete_informativo
+    ok = delete_informativo(info_id)
+    return jsonify({'success': ok})
 
 # ── Main ────────────────────────────────────────────────────────────
 

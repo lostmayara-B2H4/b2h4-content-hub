@@ -113,6 +113,21 @@ def _init_sqlite(conn):
         );
         CREATE INDEX IF NOT EXISTS idx_content_items_source ON content_items(source_type, fetched_at DESC);
         CREATE INDEX IF NOT EXISTS idx_content_items_analyzed ON content_items(analyzed) WHERE analyzed = 0;
+        CREATE TABLE IF NOT EXISTS informativos (
+            id TEXT PRIMARY KEY,
+            tipo TEXT NOT NULL,
+            titulo TEXT NOT NULL,
+            descricao TEXT,
+            url TEXT,
+            data_evento TEXT,
+            data_fim TEXT,
+            local TEXT,
+            horario TEXT,
+            ativo INTEGER DEFAULT 1,
+            destaque INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
 
@@ -458,3 +473,137 @@ def get_stats() -> Dict:
             cur.execute("SELECT category, COUNT(*) as count FROM content_items WHERE category IS NOT NULL GROUP BY category")
             stats['by_category'] = {row['category']: row['count'] for row in cur.fetchall()}
         return stats
+
+
+# ── #19: Informativos CRUD ──────────────────────────────────────────
+import uuid as _uuid
+
+def _init_informativos(conn):
+    """Cria tabela de informativos se não existir."""
+    if _use_postgres():
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS informativos (
+                id TEXT PRIMARY KEY,
+                tipo TEXT NOT NULL CHECK(tipo IN ('evento', 'publicacao', 'data_importante', 'imersao', 'workshop')),
+                titulo TEXT NOT NULL,
+                descricao TEXT,
+                url TEXT,
+                data_evento DATE,
+                data_fim DATE,
+                local TEXT,
+                horario TEXT,
+                ativo INTEGER DEFAULT 1,
+                destaque INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    else:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS informativos (
+                id TEXT PRIMARY KEY,
+                tipo TEXT NOT NULL,
+                titulo TEXT NOT NULL,
+                descricao TEXT,
+                url TEXT,
+                data_evento TEXT,
+                data_fim TEXT,
+                local TEXT,
+                horario TEXT,
+                ativo INTEGER DEFAULT 1,
+                destaque INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+def get_informativos_ativos(tipo=None, limite=10):
+    """Busca informativos ativos."""
+    with get_db() as conn:
+        if _use_postgres():
+            cur = conn.cursor()
+            if tipo:
+                cur.execute(
+                    "SELECT * FROM informativos WHERE ativo = 1 AND tipo = %s ORDER BY data_evento ASC LIMIT %s",
+                    (tipo, limite)
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM informativos WHERE ativo = 1 ORDER BY data_evento ASC LIMIT %s",
+                    (limite,)
+                )
+            return [dict(r) for r in cur.fetchall()]
+        else:
+            if tipo:
+                rows = conn.execute(
+                    "SELECT * FROM informativos WHERE ativo = 1 AND tipo = ? ORDER BY data_evento ASC LIMIT ?",
+                    (tipo, limite)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM informativos WHERE ativo = 1 ORDER BY data_evento ASC LIMIT ?",
+                    (limite,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+def get_informativo_by_id(info_id):
+    """Busca um informativo por ID."""
+    with get_db() as conn:
+        if _use_postgres():
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM informativos WHERE id = %s", (info_id,))
+            row = cur.fetchone()
+        else:
+            row = conn.execute("SELECT * FROM informativos WHERE id = ?", (info_id,)).fetchone()
+        return dict(row) if row else None
+
+def create_informativo(titulo, tipo, descricao=None, url=None, data_evento=None, data_fim=None, local=None, horario=None, destaque=False):
+    """Cria um novo informativo."""
+    info_id = str(_uuid.uuid4())
+    with get_db() as conn:
+        if _use_postgres():
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO informativos (id, titulo, tipo, descricao, url, data_evento, data_fim, local, horario, destaque)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (info_id, titulo, tipo, descricao, url, data_evento, data_fim, local, horario, 1 if destaque else 0)
+            )
+        else:
+            conn.execute(
+                """INSERT INTO informativos (id, titulo, tipo, descricao, url, data_evento, data_fim, local, horario, destaque)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (info_id, titulo, tipo, descricao, url, data_evento, data_fim, local, horario, 1 if destaque else 0)
+            )
+        conn.commit()
+    return info_id
+
+def update_informativo(info_id, **kwargs):
+    """Atualiza um informativo."""
+    if not kwargs:
+        return False
+    sets = []
+    vals = []
+    for k, v in kwargs.items():
+        sets.append(f"{k} = %s" if _use_postgres() else f"{k} = ?")
+        vals.append(v)
+    vals.append(info_id)
+    sql = f"UPDATE informativos SET {', '.join(sets)}, updated_at = CURRENT_TIMESTAMP WHERE id = %s" if _use_postgres() else f"UPDATE informativos SET {', '.join(sets)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    with get_db() as conn:
+        if _use_postgres():
+            cur = conn.cursor()
+            cur.execute(sql, vals)
+        else:
+            conn.execute(sql, vals)
+        conn.commit()
+    return True
+
+def delete_informativo(info_id):
+    """Remove um informativo (soft delete: ativo=0)."""
+    with get_db() as conn:
+        if _use_postgres():
+            cur = conn.cursor()
+            cur.execute("UPDATE informativos SET ativo = 0 WHERE id = %s", (info_id,))
+        else:
+            conn.execute("UPDATE informativos SET ativo = 0 WHERE id = ?", (info_id,))
+        conn.commit()
+    return True
