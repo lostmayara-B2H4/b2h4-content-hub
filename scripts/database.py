@@ -578,12 +578,17 @@ def create_informativo(titulo, tipo, descricao=None, url=None, data_evento=None,
     return info_id
 
 def update_informativo(info_id, **kwargs):
-    """Atualiza um informativo."""
+    """Atualiza um informativo. Whitelist de colunas permitidas."""
+    ALLOWED_FIELDS = {'titulo', 'tipo', 'descricao', 'url', 'data_evento', 'data_fim', 'local', 'horario', 'destaque', 'ativo'}
     if not kwargs:
+        return False
+    # Filter to only allowed fields
+    safe = {k: v for k, v in kwargs.items() if k in ALLOWED_FIELDS}
+    if not safe:
         return False
     sets = []
     vals = []
-    for k, v in kwargs.items():
+    for k, v in safe.items():
         sets.append(f"{k} = %s" if _use_postgres() else f"{k} = ?")
         vals.append(v)
     vals.append(info_id)
